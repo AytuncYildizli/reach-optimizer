@@ -90,10 +90,8 @@ export class ComposerDetector {
 
     this.debounceTimer = setTimeout(() => {
       if (!this.currentComposer) return;
-      const text = this.currentComposer.textContent ?? '';
-      if (text.length > 0) {
-        this.onTextChange(this.currentComposer, text);
-      }
+      const text = (this.currentComposer.textContent ?? '').trim();
+      this.onTextChange(this.currentComposer, text);
     }, 300);
   }
 }

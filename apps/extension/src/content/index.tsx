@@ -143,12 +143,27 @@ function mountOverlay(): void {
 // Composer detection callback
 // ---------------------------------------------------------------------------
 function onComposerTextChange(_composerEl: HTMLElement, text: string): void {
-  // 1. Run client rules immediately
+  // If text is empty, reset to idle state
+  if (!text || text.length === 0) {
+    if (setGlobalAnalysis) setGlobalAnalysis(null);
+    if (setGlobalCurrentText) setGlobalCurrentText("");
+    latestText = "";
+    latestScore = 0;
+    latestClientAnalysis = null;
+    if (serverTimer) { clearTimeout(serverTimer); serverTimer = null; }
+    chrome.runtime.sendMessage({ type: "UPDATE_BADGE", score: 0 });
+    return;
+  }
+
+  // 1. Detect media attachments
+  const hasMedia = !!document.querySelector('[data-testid="attachments"], [data-testid="tweetPhoto"], [data-testid="videoComponent"]');
+
+  // 2. Run client rules immediately
   const input: TweetInput = {
     text,
     platform: "x",
     isThread: false,
-    hasMedia: false,
+    hasMedia,
   };
 
   const result = engine.evaluate(input);
