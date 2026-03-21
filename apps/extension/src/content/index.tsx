@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { ScoreEngine, allClientRules } from "@reach/rules-engine";
 import type { AnalysisResult, TweetInput } from "@reach/shared-types";
 import { ComposerDetector } from "./composer-detector";
+import { setupPostTracker } from "./post-tracker";
 import { ScoreOverlay } from "./ScoreOverlay";
 import { OVERLAY_STYLES } from "./styles";
 
@@ -27,6 +28,12 @@ let setGlobalCurrentText: ((t: string) => void) | null = null;
 let serverTimer: ReturnType<typeof setTimeout> | null = null;
 let isServerPending = false;
 let latestClientAnalysis: AnalysisResult | null = null;
+
+// ---------------------------------------------------------------------------
+// Post tracker state — exposed for setupPostTracker callbacks
+// ---------------------------------------------------------------------------
+let latestText = "";
+let latestScore = 0;
 
 /**
  * Merge server AI-enhanced results into the current client analysis.
@@ -147,6 +154,10 @@ function onComposerTextChange(_composerEl: HTMLElement, text: string): void {
   const result = engine.evaluate(input);
   latestClientAnalysis = result;
 
+  // Keep module-level state in sync for post tracker
+  latestText = text;
+  latestScore = result.reachScore;
+
   if (setGlobalAnalysis) {
     setGlobalAnalysis(result);
   }
@@ -187,7 +198,12 @@ function init(): void {
   const detector = new ComposerDetector(onComposerTextChange);
   detector.start();
 
-  console.log("[ReachOS] Overlay mounted, composer detector started");
+  setupPostTracker(
+    () => latestText,
+    () => latestScore,
+  );
+
+  console.log("[ReachOS] Overlay mounted, composer detector started, post tracker active");
 }
 
 if (document.readyState === "loading") {
