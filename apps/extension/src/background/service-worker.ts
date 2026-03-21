@@ -1,4 +1,4 @@
-const API_BASE = "https://api.reachos.dev";
+const API_BASE = "https://reach-optimizer.vercel.app";
 
 type MessageType = "GET_AUTH_TOKEN" | "SET_AUTH_TOKEN" | "API_REQUEST" | "UPDATE_BADGE";
 

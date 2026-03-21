@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const API_BASE = 'http://localhost:3100'; // TODO: env-based
+const API_BASE = 'https://reach-optimizer.vercel.app'; // TODO: env-based
 
 interface UserInfo {
   xUsername: string;
