@@ -267,6 +267,27 @@ export const OVERLAY_STYLES = `
   color: #1d9bf0;
   font-weight: 600;
 }
+.reachos-rewrite-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.reachos-rewrite-score {
+  font-size: 13px;
+  font-weight: 800;
+  color: #e7e9ea;
+}
+.reachos-rewrite-delta {
+  font-size: 11px;
+  font-weight: 700;
+}
+.reachos-rewrite-delta.positive {
+  color: #00ba7c;
+}
+.reachos-rewrite-delta.negative {
+  color: #f4212e;
+}
 
 /* AI Slop Badge */
 .reachos-ai-section {

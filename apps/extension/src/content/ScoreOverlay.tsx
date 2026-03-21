@@ -4,9 +4,39 @@ import type { AnalysisResult, ScoreBreakdown, ScoreTier, Suggestion } from "@rea
 // ---------------------------------------------------------------------------
 // RewriteSection — AI rewrite suggestions
 // ---------------------------------------------------------------------------
-function RewriteSection({ text, isServerPending }: { text: string; isServerPending: boolean }) {
-  const [suggestions, setSuggestions] = useState<string[]>([]);
+import { ScoreEngine, allClientRules } from "@reach/rules-engine";
+
+const rewriteScorer = new ScoreEngine(allClientRules);
+
+interface ScoredSuggestion {
+  text: string;
+  score: number;
+  tier: string;
+  delta: number; // score difference vs original
+}
+
+function scoreRewrite(text: string, originalScore: number): ScoredSuggestion {
+  const result = rewriteScorer.evaluate({ text, platform: 'x', isThread: false, hasMedia: false });
+  return {
+    text,
+    score: result.reachScore,
+    tier: result.tier,
+    delta: result.reachScore - originalScore,
+  };
+}
+
+const TIER_EMOJI: Record<string, string> = {
+  critical: '🔴', below_average: '🟡', good: '🟢', excellent: '⭐', perfect: '🔥',
+};
+
+function RewriteSection({ text, isServerPending, originalScore }: { text: string; isServerPending: boolean; originalScore: number }) {
+  const [scored, setScored] = useState<ScoredSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // Reset rewrites when text changes significantly
+  useEffect(() => {
+    setScored([]);
+  }, [text]);
 
   const handleRewrite = () => {
     setLoading(true);
@@ -14,20 +44,29 @@ function RewriteSection({ text, isServerPending }: { text: string; isServerPendi
       { type: 'API_REQUEST', endpoint: '/api/suggest', method: 'POST', body: { content: text, type: 'hook' } },
       (response) => {
         setLoading(false);
-        if (response?.ok && response.data?.success) {
-          setSuggestions(response.data.suggestions);
+        if (response?.ok && response.data?.success && response.data.suggestions?.length > 0) {
+          const results = response.data.suggestions
+            .map((s: string) => scoreRewrite(s, originalScore))
+            .sort((a: ScoredSuggestion, b: ScoredSuggestion) => b.score - a.score);
+          setScored(results);
         }
       }
     );
   };
 
-  if (suggestions.length > 0) {
+  if (scored.length > 0) {
     return (
       <div className="reachos-rewrite-section">
         <div className="reachos-section-label">AI REWRITES</div>
-        {suggestions.map((s: string, i: number) => (
-          <div key={i} className="reachos-rewrite-item" onClick={() => navigator.clipboard.writeText(s)}>
-            <div className="reachos-rewrite-text">{s}</div>
+        {scored.map((s, i) => (
+          <div key={i} className="reachos-rewrite-item" onClick={() => navigator.clipboard.writeText(s.text)}>
+            <div className="reachos-rewrite-header">
+              <span className="reachos-rewrite-score">{TIER_EMOJI[s.tier] || ''} {s.score}</span>
+              <span className={`reachos-rewrite-delta ${s.delta >= 0 ? 'positive' : 'negative'}`}>
+                {s.delta >= 0 ? '+' : ''}{s.delta} vs yours
+              </span>
+            </div>
+            <div className="reachos-rewrite-text">{s.text}</div>
             <div className="reachos-rewrite-copy">Copy</div>
           </div>
         ))}
@@ -343,7 +382,7 @@ export function ScoreOverlay({ analysis, isServerPending, serverError, currentTe
             <BreakdownBars breakdown={analysis.breakdown} />
             <SuggestionList suggestions={analysis.suggestions} />
             {currentText && (
-              <RewriteSection text={currentText} isServerPending={isServerPending} />
+              <RewriteSection text={currentText} isServerPending={isServerPending} originalScore={analysis.reachScore} />
             )}
             <AISlopBadge
               aiSlopScore={analysis.aiSlopScore}
