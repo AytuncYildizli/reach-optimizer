@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "ReachOS — Content Reach Optimizer",
+  "version": "0.1.0",
+  "description": "Real-time Reach Score for your tweets. Optimize content against algorithm signals.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://x.com/*", "https://twitter.com/*"],
+  "background": {
+    "service_worker": "src/background/service-worker.ts",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://x.com/*", "https://twitter.com/*"],
+      "js": ["src/content/index.tsx"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "src/popup/index.html",
+    "default_title": "ReachOS"
+  }
+}
