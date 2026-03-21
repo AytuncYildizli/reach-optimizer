@@ -2,6 +2,49 @@ import { useState, useEffect } from "react";
 import type { AnalysisResult, ScoreBreakdown, ScoreTier, Suggestion } from "@reach/shared-types";
 
 // ---------------------------------------------------------------------------
+// RewriteSection — AI rewrite suggestions
+// ---------------------------------------------------------------------------
+function RewriteSection({ text, isServerPending }: { text: string; isServerPending: boolean }) {
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const handleRewrite = () => {
+    setLoading(true);
+    chrome.runtime.sendMessage(
+      { type: 'API_REQUEST', endpoint: '/api/suggest', method: 'POST', body: { content: text, type: 'hook' } },
+      (response) => {
+        setLoading(false);
+        if (response?.ok && response.data?.success) {
+          setSuggestions(response.data.suggestions);
+        }
+      }
+    );
+  };
+
+  if (suggestions.length > 0) {
+    return (
+      <div className="reachos-rewrite-section">
+        <div className="reachos-section-label">AI REWRITES</div>
+        {suggestions.map((s: string, i: number) => (
+          <div key={i} className="reachos-rewrite-item" onClick={() => navigator.clipboard.writeText(s)}>
+            <div className="reachos-rewrite-text">{s}</div>
+            <div className="reachos-rewrite-copy">Copy</div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="reachos-rewrite-section">
+      <button className="reachos-rewrite-btn" onClick={handleRewrite} disabled={loading || !text}>
+        {loading ? 'Generating...' : '\u2728 Get AI Rewrites'}
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Tier color and label mappings
 // ---------------------------------------------------------------------------
 const TIER_COLORS: Record<ScoreTier, string> = {
@@ -245,9 +288,10 @@ interface ScoreOverlayProps {
   analysis: AnalysisResult | null;
   isServerPending: boolean;
   serverError: boolean;
+  currentText?: string;
 }
 
-export function ScoreOverlay({ analysis, isServerPending, serverError }: ScoreOverlayProps) {
+export function ScoreOverlay({ analysis, isServerPending, serverError, currentText }: ScoreOverlayProps) {
   const [minimized, setMinimized] = useState(false);
 
   if (minimized && analysis) {
@@ -298,6 +342,9 @@ export function ScoreOverlay({ analysis, isServerPending, serverError }: ScoreOv
             <ScoreCircle score={analysis.reachScore} tier={analysis.tier} />
             <BreakdownBars breakdown={analysis.breakdown} />
             <SuggestionList suggestions={analysis.suggestions} />
+            {currentText && (
+              <RewriteSection text={currentText} isServerPending={isServerPending} />
+            )}
             <AISlopBadge
               aiSlopScore={analysis.aiSlopScore}
               isServerPending={isServerPending}

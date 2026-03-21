@@ -219,6 +219,55 @@ export const OVERLAY_STYLES = `
   margin-bottom: 2px;
 }
 
+/* Rewrite Section */
+.reachos-rewrite-section {
+  padding: 8px 16px 12px;
+}
+.reachos-rewrite-btn {
+  width: 100%;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, #1d9bf0, #0066cc);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  pointer-events: auto;
+}
+.reachos-rewrite-btn:hover {
+  opacity: 0.9;
+}
+.reachos-rewrite-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.reachos-rewrite-item {
+  padding: 8px 10px;
+  background: rgba(29,155,240,0.06);
+  border: 1px solid rgba(29,155,240,0.15);
+  border-radius: 8px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+  pointer-events: auto;
+}
+.reachos-rewrite-item:hover {
+  background: rgba(29,155,240,0.12);
+}
+.reachos-rewrite-text {
+  font-size: 12px;
+  line-height: 1.4;
+  color: #e7e9ea;
+  margin-bottom: 4px;
+}
+.reachos-rewrite-copy {
+  font-size: 10px;
+  color: #1d9bf0;
+  font-weight: 600;
+}
+
 /* AI Slop Badge */
 .reachos-ai-section {
   padding: 0 16px 16px;

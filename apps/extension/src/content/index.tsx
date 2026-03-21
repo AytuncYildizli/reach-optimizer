@@ -19,6 +19,7 @@ const engine = new ScoreEngine(allClientRules);
 let setGlobalAnalysis: ((a: AnalysisResult | null) => void) | null = null;
 let setGlobalServerPending: ((p: boolean) => void) | null = null;
 let setGlobalServerError: ((e: boolean) => void) | null = null;
+let setGlobalCurrentText: ((t: string) => void) | null = null;
 
 // ---------------------------------------------------------------------------
 // Server analysis state
@@ -85,19 +86,29 @@ function ScorePanel() {
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [serverPending, setServerPending] = useState(false);
   const [serverError, setServerError] = useState(false);
+  const [currentText, setCurrentText] = useState("");
 
   useEffect(() => {
     setGlobalAnalysis = setAnalysis;
     setGlobalServerPending = setServerPending;
     setGlobalServerError = setServerError;
+    setGlobalCurrentText = setCurrentText;
     return () => {
       setGlobalAnalysis = null;
       setGlobalServerPending = null;
       setGlobalServerError = null;
+      setGlobalCurrentText = null;
     };
   }, []);
 
-  return <ScoreOverlay analysis={analysis} isServerPending={serverPending} serverError={serverError} />;
+  return (
+    <ScoreOverlay
+      analysis={analysis}
+      isServerPending={serverPending}
+      serverError={serverError}
+      currentText={currentText}
+    />
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -138,6 +149,9 @@ function onComposerTextChange(_composerEl: HTMLElement, text: string): void {
 
   if (setGlobalAnalysis) {
     setGlobalAnalysis(result);
+  }
+  if (setGlobalCurrentText) {
+    setGlobalCurrentText(text);
   }
 
   // Update extension icon badge with current score
