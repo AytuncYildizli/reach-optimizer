@@ -7,6 +7,10 @@ import { ScoreEngine, allClientRules } from '@reach/rules-engine';
 import { AIAnalyzer } from '@reach/ai-checks';
 import type { AnalyzeRequest, AnalyzeResponse, ErrorResponse, AnalysisResult } from '@reach/shared-types';
 
+// Force Node.js runtime (Anthropic SDK needs net/tls)
+export const runtime = 'nodejs';
+export const maxDuration = 30;
+
 const engine = new ScoreEngine(allClientRules);
 
 export async function OPTIONS() {

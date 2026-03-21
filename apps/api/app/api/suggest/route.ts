@@ -3,6 +3,10 @@ import { verifyToken } from '@lib/auth';
 import { applyRateLimit } from '@lib/middleware';
 import { env } from '@lib/env';
 import { AIAnalyzer } from '@reach/ai-checks';
+
+// Force Node.js runtime (Anthropic SDK needs net/tls)
+export const runtime = 'nodejs';
+export const maxDuration = 30;
 import type { SuggestRequest, SuggestResponse, ErrorResponse } from '@reach/shared-types';
 
 export async function OPTIONS() {
