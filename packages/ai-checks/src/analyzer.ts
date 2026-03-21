@@ -53,8 +53,11 @@ export class AIAnalyzer {
 
   async generateHookSuggestions(text: string): Promise<string[]> {
     const prompt = buildHookSuggestionsPrompt(text);
+    console.log('[AIAnalyzer] Calling Claude for hook suggestions...');
     const response = await analyzeWithClaude(this.client, prompt.system, prompt.user);
+    console.log('[AIAnalyzer] Claude response:', response ? response.substring(0, 200) : 'NULL');
     const result = parseClaudeJSON<{ suggestions: string[] }>(response);
+    console.log('[AIAnalyzer] Parsed suggestions:', result?.suggestions?.length ?? 0);
     return result?.suggestions ?? [];
   }
 

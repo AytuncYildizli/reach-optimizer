@@ -16,7 +16,7 @@ export async function analyzeWithClaude(
   userPrompt: string,
   options: ClaudeAnalysisOptions = {}
 ): Promise<string | null> {
-  const { maxTokens = 512, temperature = 0.3, timeoutMs = 10000 } = options;
+  const { maxTokens = 512, temperature = 0.3, timeoutMs = 25000 } = options;
 
   try {
     const response = await Promise.race([

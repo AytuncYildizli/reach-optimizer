@@ -39,8 +39,20 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const analyzer = new AIAnalyzer(env.ANTHROPIC_API_KEY);
-  const suggestions = await analyzer.generateHookSuggestions(body.content);
+  try {
+    const analyzer = new AIAnalyzer(env.ANTHROPIC_API_KEY);
+    const suggestions = await analyzer.generateHookSuggestions(body.content);
 
-  return NextResponse.json({ success: true, suggestions } satisfies SuggestResponse);
+    if (suggestions.length === 0) {
+      console.warn('[Suggest] Claude returned empty suggestions for:', body.content.substring(0, 50));
+    }
+
+    return NextResponse.json({ success: true, suggestions } satisfies SuggestResponse);
+  } catch (error) {
+    console.error('[Suggest] Error:', error);
+    return NextResponse.json(
+      { success: false, error: 'AI generation failed: ' + (error instanceof Error ? error.message : 'unknown'), code: 'INTERNAL_ERROR' } satisfies ErrorResponse,
+      { status: 500 }
+    );
+  }
 }
