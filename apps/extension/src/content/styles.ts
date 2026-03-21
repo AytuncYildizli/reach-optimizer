@@ -5,21 +5,23 @@
 export const OVERLAY_STYLES = `
 :host {
   all: initial;
+  pointer-events: none !important;
 }
 * {
   box-sizing: border-box;
 }
 
-/* Container */
+/* Container — must not block page interactions */
 #reachos-container {
   position: fixed;
   bottom: 20px;
   right: 20px;
   z-index: 999999;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  pointer-events: none;
 }
 
-/* Panel */
+/* Panel — re-enable pointer events so panel itself is interactive */
 .reachos-panel {
   background: #16181c;
   color: #e7e9ea;
@@ -28,6 +30,7 @@ export const OVERLAY_STYLES = `
   width: 300px;
   box-shadow: 0 8px 24px rgba(0,0,0,0.4);
   overflow: hidden;
+  pointer-events: auto;
 }
 
 /* Header */
@@ -319,6 +322,7 @@ export const OVERLAY_STYLES = `
   border-radius: 24px;
   padding: 8px 14px;
   cursor: pointer;
+  pointer-events: auto;
   font-size: 18px;
   font-weight: 800;
   box-shadow: 0 4px 12px rgba(0,0,0,0.3);
