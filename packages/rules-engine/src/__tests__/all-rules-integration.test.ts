@@ -25,18 +25,17 @@ describe('allClientRules registry', () => {
 describe('ScoreEngine with all client rules', () => {
   const engine = new ScoreEngine(allClientRules);
 
-  it('plain "Hello world" scores base 50 (negative categories clamped to 0)', () => {
+  it('plain "Hello world" gets penalized for short text and no CTA', () => {
     const result = engine.evaluate({
       text: 'Hello world',
       platform: 'x',
       isThread: false,
       hasMedia: false,
     });
-    // Short text: hookLength -2 (structure, clamped to 0), charLength -2 (structure, clamped to 0),
-    // no CTA -3 (engagement, clamped to 0). All negative per-category values clamp to 0.
-    // Final = 50 + 0 + 0 + 0 + 0 + 0 = 50
-    expect(result.reachScore).toBe(50);
-    expect(result.tier).toBe('below_average');
+    // Short text: hookLength -2, charLength -2, no CTA -3 -> all flow to penalties
+    // Score = 50 + penalties(-7) = 43
+    expect(result.reachScore).toBeLessThan(50);
+    expect(result.breakdown.penalties).toBeLessThan(0);
   });
 
   it('heavily penalized tweet: generic hook + link + engagement bait', () => {

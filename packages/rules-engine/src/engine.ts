@@ -74,10 +74,15 @@ export class ScoreEngine {
       }
     }
 
+    // Move negative category scores into penalties (categories should be 0+)
+    if (hook < 0) { penalties += hook; hook = 0; }
+    if (structure < 0) { penalties += structure; structure = 0; }
+    if (engagement < 0) { penalties += engagement; engagement = 0; }
+
     // Clamp per-category to limits from weights.json
-    hook = Math.max(0, Math.min(weights.categories.hook.maxPoints, hook));
-    structure = Math.max(0, Math.min(weights.categories.structure.maxPoints, structure));
-    engagement = Math.max(0, Math.min(weights.categories.engagement.maxPoints, engagement));
+    hook = Math.min(weights.categories.hook.maxPoints, hook);
+    structure = Math.min(weights.categories.structure.maxPoints, structure);
+    engagement = Math.min(weights.categories.engagement.maxPoints, engagement);
     penalties = Math.max(weights.categories.penalty.maxPenalty, Math.min(0, penalties));
     bonuses = Math.max(0, Math.min(weights.categories.bonus.maxBonus, bonuses));
 
