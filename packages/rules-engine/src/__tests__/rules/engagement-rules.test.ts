@@ -18,7 +18,7 @@ describe('ctaPresenceRule', () => {
     const result = ctaPresenceRule.evaluate(input);
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(6);
+    expect(result.points).toBe(7);
     expect(result.severity).toBe('positive');
     expect(result.suggestion).toContain('Reply-triggering CTA detected');
   });
@@ -31,7 +31,7 @@ describe('ctaPresenceRule', () => {
     const result = ctaPresenceRule.evaluate(input);
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-3);
+    expect(result.points).toBe(-4);
     expect(result.severity).toBe('warning');
     expect(result.suggestion).toContain('No call-to-action');
   });
@@ -46,7 +46,7 @@ describe('questionTypeRule', () => {
     const result = questionTypeRule.evaluate(input);
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-2);
+    expect(result.points).toBe(-3);
     expect(result.severity).toBe('warning');
     expect(result.suggestion).toContain('Rhetorical question');
   });
@@ -59,7 +59,7 @@ describe('questionTypeRule', () => {
     const result = questionTypeRule.evaluate(input);
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(3);
+    expect(result.points).toBe(4);
     expect(result.severity).toBe('positive');
     expect(result.suggestion).toContain('answerable question');
   });
@@ -85,7 +85,7 @@ describe('bookmarkValueRule', () => {
     const result = bookmarkValueRule.evaluate(input);
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(4);
+    expect(result.points).toBe(5);
     expect(result.severity).toBe('positive');
     expect(result.suggestion).toContain('Bookmarkable content');
   });

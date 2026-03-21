@@ -18,7 +18,7 @@ describe('engagementBaitRule', () => {
     const result = engagementBaitRule.evaluate(input);
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-6);
+    expect(result.points).toBe(-10);
     expect(result.severity).toBe('critical');
     expect(result.suggestion).toContain('Engagement bait detected');
     expect(result.highlight).toBeDefined();
@@ -32,7 +32,7 @@ describe('engagementBaitRule', () => {
     const result = engagementBaitRule.evaluate(input);
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-6);
+    expect(result.points).toBe(-10);
     expect(result.severity).toBe('critical');
   });
 
@@ -58,7 +58,7 @@ describe('textWallRule', () => {
     const result = textWallRule.evaluate(input);
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-4);
+    expect(result.points).toBe(-5);
     expect(result.severity).toBe('warning');
     expect(result.suggestion).toContain('Wall of text');
   });

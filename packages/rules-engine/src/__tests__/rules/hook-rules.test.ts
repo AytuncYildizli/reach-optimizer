@@ -23,7 +23,7 @@ describe('genericHookRule', () => {
     });
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-4);
+    expect(result.points).toBe(-5);
     expect(result.severity).toBe('warning');
     expect(result.suggestion).toContain('Generic hook detected');
   });
@@ -59,7 +59,7 @@ describe('hookLengthRule', () => {
     });
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(+4);
+    expect(result.points).toBe(+3);
     expect(result.severity).toBe('positive');
     expect(result.suggestion).toContain('Good hook length');
   });
@@ -71,7 +71,7 @@ describe('hookLengthRule', () => {
     });
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-2);
+    expect(result.points).toBe(-3);
     expect(result.severity).toBe('warning');
     expect(result.suggestion).toContain('too long');
   });
@@ -85,7 +85,7 @@ describe('numberDataHookRule', () => {
     });
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(+4);
+    expect(result.points).toBe(+5);
     expect(result.severity).toBe('positive');
     expect(result.suggestion).toContain('Data point in hook');
   });
@@ -97,7 +97,7 @@ describe('numberDataHookRule', () => {
     });
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(+4);
+    expect(result.points).toBe(+5);
     expect(result.severity).toBe('positive');
   });
 
@@ -144,7 +144,7 @@ describe('firstPersonVoiceRule', () => {
     });
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(+4);
+    expect(result.points).toBe(+5);
     expect(result.severity).toBe('positive');
     expect(result.suggestion).toContain('First-person voice');
   });

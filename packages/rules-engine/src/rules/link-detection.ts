@@ -24,7 +24,7 @@ export const linkDetectionRule: RuleDefinition = {
     return {
       ruleId: 'penalty-link-external',
       triggered: true,
-      points: -10,
+      points: -12,
       severity: 'critical',
       suggestion: 'Move the link to the first reply. External links reduce reach significantly.',
       highlight: {

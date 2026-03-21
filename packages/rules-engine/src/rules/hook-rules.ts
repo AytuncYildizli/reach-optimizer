@@ -23,7 +23,7 @@ export const genericHookRule: RuleDefinition = {
       return {
         ruleId: 'hook-generic-pattern',
         triggered: true,
-        points: -4,
+        points: -5,
         severity: 'warning',
         suggestion:
           'Generic hook detected. Try opening with a specific number, bold claim, or question.',
@@ -62,7 +62,7 @@ export const hookLengthRule: RuleDefinition = {
       return {
         ruleId: 'hook-length-check',
         triggered: true,
-        points: +4,
+        points: +3,
         severity: 'positive',
         suggestion: 'Good hook length',
       };
@@ -71,7 +71,7 @@ export const hookLengthRule: RuleDefinition = {
     return {
       ruleId: 'hook-length-check',
       triggered: true,
-      points: -2,
+      points: -3,
       severity: 'warning',
       suggestion: 'Hook too long — trim to under 100 characters',
     };
@@ -93,7 +93,7 @@ export const numberDataHookRule: RuleDefinition = {
       return {
         ruleId: 'hook-number-data',
         triggered: true,
-        points: +4,
+        points: +5,
         severity: 'positive',
         suggestion: 'Data point in hook — this drives +20-40% more engagement',
       };
@@ -151,7 +151,7 @@ export const firstPersonVoiceRule: RuleDefinition = {
       return {
         ruleId: 'bonus-first-person',
         triggered: true,
-        points: +4,
+        points: +5,
         severity: 'positive',
         suggestion:
           'First-person voice detected — this drives +23% more engagement. Keep it!',

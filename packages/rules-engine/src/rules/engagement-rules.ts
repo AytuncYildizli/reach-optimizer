@@ -40,7 +40,7 @@ export const ctaPresenceRule: RuleDefinition = {
       return {
         ruleId: 'engagement-cta-presence',
         triggered: true,
-        points: 6,
+        points: 7,
         severity: 'positive',
         suggestion: 'Reply-triggering CTA detected — this drives conversations',
       };
@@ -49,7 +49,7 @@ export const ctaPresenceRule: RuleDefinition = {
     return {
       ruleId: 'engagement-cta-presence',
       triggered: true,
-      points: -3,
+      points: -4,
       severity: 'warning',
       suggestion:
         'No call-to-action. Add a question to trigger replies (replies are 27x more valuable than likes).',
@@ -81,7 +81,7 @@ export const questionTypeRule: RuleDefinition = {
       return {
         ruleId: 'engagement-question-type',
         triggered: true,
-        points: -2,
+        points: -3,
         severity: 'warning',
         suggestion: 'Rhetorical question detected. Answerable questions drive more replies.',
       };
@@ -90,7 +90,7 @@ export const questionTypeRule: RuleDefinition = {
     return {
       ruleId: 'engagement-question-type',
       triggered: true,
-      points: 3,
+      points: 4,
       severity: 'positive',
       suggestion: 'Good — answerable question encourages replies',
     };
@@ -110,7 +110,7 @@ export const bookmarkValueRule: RuleDefinition = {
       return {
         ruleId: 'engagement-bookmark-value',
         triggered: true,
-        points: 4,
+        points: 5,
         severity: 'positive',
         suggestion: 'Bookmarkable content detected — bookmarks are 10-20x more valuable than likes',
       };

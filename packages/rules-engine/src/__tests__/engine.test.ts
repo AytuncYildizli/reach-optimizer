@@ -11,21 +11,21 @@ const baseInput: TweetInput = {
 };
 
 describe('ScoreEngine', () => {
-  it('returns base score of 50 with no rules', () => {
+  it('returns base score of 45 with no rules', () => {
     const engine = new ScoreEngine([]);
     const result = engine.evaluate({ ...baseInput, text: 'Hello world' });
 
-    expect(result.reachScore).toBe(50);
+    expect(result.reachScore).toBe(45);
   });
 
-  it('applies link penalty correctly (50 + (-10) = 40)', () => {
+  it('applies link penalty correctly (45 + (-12) = 33)', () => {
     const engine = new ScoreEngine([linkDetectionRule]);
     const result = engine.evaluate({
       ...baseInput,
       text: 'Check this out https://example.com',
     });
 
-    expect(result.reachScore).toBe(40);
+    expect(result.reachScore).toBe(33);
   });
 
   it('clamps score between 0 and 100', () => {
@@ -50,11 +50,11 @@ describe('ScoreEngine', () => {
     expect(result.reachScore).toBeLessThanOrEqual(100);
   });
 
-  it('assigns correct tier for score 50 (below_average)', () => {
+  it('assigns correct tier for score 45 (below_average)', () => {
     const engine = new ScoreEngine([]);
     const result = engine.evaluate({ ...baseInput, text: 'Hello world' });
 
-    expect(result.reachScore).toBe(50);
+    expect(result.reachScore).toBe(45);
     expect(result.tier).toBe('below_average');
   });
 

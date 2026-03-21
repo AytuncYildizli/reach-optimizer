@@ -23,3 +23,21 @@ export {
   engagementBaitRule,
   textWallRule,
 } from './rules/penalty-rules';
+export {
+  aiSlopWordsRule,
+  aiSlopStructureRule,
+  staleFormulaRule,
+  hedgingOpenerRule,
+} from './rules/ai-detection-rules';
+export {
+  openLoopRule,
+  contrarianClaimRule,
+  storyOpenerRule,
+} from './rules/advanced-hook-rules';
+export {
+  choiceQuestionRule,
+  directAddressRule,
+  deadEndingRule,
+  combativeToneRule,
+  specificNumberRule,
+} from './rules/reply-potential-rules';

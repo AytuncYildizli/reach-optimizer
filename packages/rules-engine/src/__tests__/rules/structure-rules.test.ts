@@ -46,7 +46,7 @@ describe('characterLengthRule', () => {
     });
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-3);
+    expect(result.points).toBe(-4);
     expect(result.severity).toBe('warning');
     expect(result.suggestion).toContain('thread');
   });
@@ -60,7 +60,7 @@ describe('characterLengthRule', () => {
     });
 
     // Should not trigger the wall penalty; over 280 in a thread is fine
-    expect(result.points).not.toBe(-3);
+    expect(result.points).not.toBe(-4);
   });
 });
 
@@ -82,7 +82,7 @@ describe('hashtagCountRule', () => {
     });
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-3);
+    expect(result.points).toBe(-4);
     expect(result.severity).toBe('warning');
   });
 });
@@ -105,7 +105,7 @@ describe('emojiCountRule', () => {
     });
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-2);
+    expect(result.points).toBe(-3);
     expect(result.severity).toBe('warning');
   });
 });
@@ -130,7 +130,7 @@ describe('threadLengthRule', () => {
     });
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(4);
+    expect(result.points).toBe(5);
     expect(result.severity).toBe('positive');
   });
 
@@ -143,7 +143,7 @@ describe('threadLengthRule', () => {
     });
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-2);
+    expect(result.points).toBe(-3);
     expect(result.severity).toBe('warning');
   });
 

@@ -27,7 +27,7 @@ export const engagementBaitRule: RuleDefinition = {
         return {
           ruleId: 'penalty-engagement-bait',
           triggered: true,
-          points: -6,
+          points: -10,
           severity: 'critical',
           suggestion:
             'Engagement bait detected. Platforms penalize this. Convert to an organic question instead.',
@@ -64,7 +64,7 @@ export const textWallRule: RuleDefinition = {
       return {
         ruleId: 'penalty-text-wall',
         triggered: true,
-        points: -4,
+        points: -5,
         severity: 'warning',
         suggestion: 'Wall of text — break into paragraphs or consider a thread format',
       };

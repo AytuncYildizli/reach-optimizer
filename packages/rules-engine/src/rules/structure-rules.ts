@@ -41,7 +41,7 @@ export const characterLengthRule: RuleDefinition = {
       return {
         ruleId: 'structure-char-length',
         triggered: true,
-        points: -3,
+        points: -4,
         severity: 'warning',
         suggestion: 'Text wall — consider breaking into a thread',
       };
@@ -71,7 +71,7 @@ export const hashtagCountRule: RuleDefinition = {
       return {
         ruleId: 'penalty-hashtag-spam',
         triggered: true,
-        points: -3,
+        points: -4,
         severity: 'warning',
         suggestion:
           'Too many hashtags. Max 2, placed mid-content. Over 3 can reduce reach.',
@@ -103,7 +103,7 @@ export const emojiCountRule: RuleDefinition = {
       return {
         ruleId: 'penalty-emoji-spam',
         triggered: true,
-        points: -2,
+        points: -3,
         severity: 'warning',
         suggestion:
           'Too many emojis. Keep to 1-2 for emphasis, not decoration.',
@@ -140,7 +140,7 @@ export const threadLengthRule: RuleDefinition = {
       return {
         ruleId: 'structure-thread-length',
         triggered: true,
-        points: 4,
+        points: 5,
         severity: 'positive',
         suggestion: 'Thread length in sweet spot (7-12 tweets)',
       };
@@ -150,7 +150,7 @@ export const threadLengthRule: RuleDefinition = {
       return {
         ruleId: 'structure-thread-length',
         triggered: true,
-        points: -2,
+        points: -3,
         severity: 'warning',
         suggestion:
           'Thread too short — consider expanding or posting as single tweet',

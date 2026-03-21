@@ -1,18 +1,18 @@
 {
-  "version": "1.0.0",
-  "baseScore": 50,
+  "version": "2.0.0",
+  "baseScore": 45,
   "categories": {
     "hook": { "maxPoints": 25 },
-    "structure": { "maxPoints": 20 },
-    "engagement": { "maxPoints": 20 },
-    "penalty": { "maxPenalty": -30 },
+    "structure": { "maxPoints": 15 },
+    "engagement": { "maxPoints": 25 },
+    "penalty": { "maxPenalty": -40 },
     "bonus": { "maxBonus": 15 }
   },
   "tiers": {
-    "critical": { "min": 0, "max": 30, "label": "Don't Post — Major Issues" },
-    "below_average": { "min": 31, "max": 50, "label": "Below Average — Needs Work" },
-    "good": { "min": 51, "max": 70, "label": "Good — A Few Improvements" },
-    "excellent": { "min": 71, "max": 85, "label": "Excellent — Minor Tweaks" },
-    "perfect": { "min": 86, "max": 100, "label": "Perfect — Post It" }
+    "critical": { "min": 0, "max": 25, "label": "Don't Post - Rewrite From Scratch" },
+    "below_average": { "min": 26, "max": 45, "label": "Below Average - Significant Revision Needed" },
+    "good": { "min": 46, "max": 65, "label": "Average - Review Suggestions" },
+    "excellent": { "min": 66, "max": 82, "label": "Strong - Post With Confidence" },
+    "perfect": { "min": 83, "max": 100, "label": "Exceptional - Post Immediately" }
   }
 }
