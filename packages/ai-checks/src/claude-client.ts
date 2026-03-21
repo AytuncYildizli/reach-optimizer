@@ -21,7 +21,7 @@ export async function analyzeWithClaude(
   try {
     const response = await Promise.race([
       client.messages.create({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'claude-haiku-4-5-20251001' as string,
         max_tokens: maxTokens,
         temperature,
         system: systemPrompt,
@@ -36,8 +36,13 @@ export async function analyzeWithClaude(
     const textBlock = response.content.find(b => b.type === 'text');
     return textBlock?.text ?? null;
   } catch (error) {
-    console.error('[ReachOS] Claude API error:', error instanceof Error ? error.message : error);
-    return null; // Graceful degradation
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('[ReachOS] Claude API error:', msg);
+    // In debug mode, throw so callers can surface the error
+    if (process.env.NODE_ENV !== 'production') {
+      throw error;
+    }
+    return null; // Graceful degradation in production
   }
 }
 

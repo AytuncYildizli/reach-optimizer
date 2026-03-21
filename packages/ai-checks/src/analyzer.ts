@@ -53,12 +53,26 @@ export class AIAnalyzer {
 
   async generateHookSuggestions(text: string): Promise<string[]> {
     const prompt = buildHookSuggestionsPrompt(text);
-    console.log('[AIAnalyzer] Calling Claude for hook suggestions...');
-    const response = await analyzeWithClaude(this.client, prompt.system, prompt.user);
-    console.log('[AIAnalyzer] Claude response:', response ? response.substring(0, 200) : 'NULL');
-    const result = parseClaudeJSON<{ suggestions: string[] }>(response);
-    console.log('[AIAnalyzer] Parsed suggestions:', result?.suggestions?.length ?? 0);
-    return result?.suggestions ?? [];
+
+    // Direct Claude call with full error visibility
+    try {
+      const response = await this.client.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 512,
+        temperature: 0.3,
+        system: prompt.system,
+        messages: [{ role: 'user', content: prompt.user }],
+      });
+
+      const textBlock = response.content.find(b => b.type === 'text');
+      const raw = textBlock?.text ?? '';
+      const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      const result = JSON.parse(cleaned) as { suggestions: string[] };
+      return result?.suggestions ?? [];
+    } catch (error) {
+      // Surface error instead of swallowing
+      throw new Error('Claude hook suggestions failed: ' + (error instanceof Error ? error.message : String(error)));
+    }
   }
 
   async fullAnalysis(text: string): Promise<ServerAnalysisResult> {
