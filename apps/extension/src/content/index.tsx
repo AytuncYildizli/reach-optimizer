@@ -106,6 +106,7 @@ function ScorePanel() {
 function mountOverlay(): void {
   const host = document.createElement("div");
   host.id = "reachos-root";
+  host.style.cssText = "position:fixed;bottom:0;right:0;z-index:999999;pointer-events:none !important;width:0;height:0;overflow:visible;";
   document.body.appendChild(host);
 
   const shadow = host.attachShadow({ mode: "open" });
