@@ -4,6 +4,7 @@ import { ScoreEngine, allClientRules } from "@reach/rules-engine";
 import type { AnalysisResult, TweetInput } from "@reach/shared-types";
 import { ComposerDetector } from "./composer-detector";
 import { setupPostTracker } from "./post-tracker";
+import { setupReplyCoach } from "./reply-coach";
 import { ScoreOverlay } from "./ScoreOverlay";
 import { OVERLAY_STYLES } from "./styles";
 
@@ -218,7 +219,9 @@ function init(): void {
     () => latestScore,
   );
 
-  console.log("[ReachOS] Overlay mounted, composer detector started, post tracker active");
+  setupReplyCoach();
+
+  console.log("[ReachOS] Overlay mounted, composer detector started, post tracker active, reply coach active");
 }
 
 if (document.readyState === "loading") {

@@ -37,7 +37,7 @@ export interface AuthCallbackResponse {
 
 export interface SuggestRequest {
   content: string;
-  type: 'hook' | 'cta';
+  type: 'hook' | 'cta' | 'self-reply';
 }
 
 export interface SuggestResponse {

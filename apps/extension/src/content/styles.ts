@@ -435,4 +435,68 @@ export const OVERLAY_STYLES = `
   color: #71767b;
   padding: 0 16px 8px;
 }
+
+/* Reply Coach */
+.reachos-reply-coach {
+  padding: 8px 16px 12px;
+  border-top: 1px solid #2f3336;
+}
+.reachos-reply-coach-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.reachos-reply-coach-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.reachos-reply-coach-text {
+  font-size: 12px;
+  line-height: 1.4;
+  color: #e7e9ea;
+}
+.reachos-reply-coach-text strong {
+  color: #ffd400;
+}
+.reachos-reply-coach-btn {
+  width: 100%;
+  padding: 7px 12px;
+  background: linear-gradient(135deg, #ffd400, #f59e0b);
+  color: #000;
+  border: none;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.reachos-reply-coach-btn:disabled {
+  opacity: 0.5;
+}
+.reachos-reply-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.reachos-reply-suggestion {
+  padding: 6px 10px;
+  background: rgba(255,212,0,0.06);
+  border: 1px solid rgba(255,212,0,0.15);
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #e7e9ea;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.reachos-reply-suggestion:hover {
+  background: rgba(255,212,0,0.12);
+}
+
+/* Self-Reply Generator */
+.reachos-self-reply {
+  padding: 8px 16px 12px;
+}
 `;

@@ -90,6 +90,110 @@ function RewriteSection({ text, isServerPending, originalScore }: { text: string
 }
 
 // ---------------------------------------------------------------------------
+// ReplyCoachBanner — notifies user about unanswered replies
+// ---------------------------------------------------------------------------
+function ReplyCoachBanner() {
+  const [replyData, setReplyData] = useState<{ count: number; tweets: number } | null>(null);
+  const [replySuggestions, setReplySuggestions] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const handler = (e: CustomEvent) => {
+      setReplyData(e.detail);
+    };
+    window.addEventListener('reachos-reply-coach', handler as EventListener);
+    return () => window.removeEventListener('reachos-reply-coach', handler as EventListener);
+  }, []);
+
+  const handleGetReplies = () => {
+    setLoading(true);
+    chrome.runtime.sendMessage(
+      { type: 'API_REQUEST', endpoint: '/api/tweets/reply-suggestions', method: 'POST',
+        body: { context: 'Reply to engaged followers to boost algorithm distribution' } },
+      (response) => {
+        setLoading(false);
+        if (response?.ok && response.data?.success) {
+          setReplySuggestions(response.data.suggestions);
+        }
+      }
+    );
+  };
+
+  if (!replyData || replyData.count === 0) return null;
+
+  return (
+    <div className="reachos-reply-coach">
+      <div className="reachos-reply-coach-header">
+        <span className="reachos-reply-coach-icon">{'\uD83D\uDCAC'}</span>
+        <span className="reachos-reply-coach-text">
+          <strong>{replyData.count} replies</strong> on {replyData.tweets} tweets {'\u2014'} reply back for <strong>150x boost!</strong>
+        </span>
+      </div>
+      {replySuggestions.length === 0 ? (
+        <button className="reachos-reply-coach-btn" onClick={handleGetReplies} disabled={loading}>
+          {loading ? 'Generating...' : '\uD83D\uDCA1 Get Reply Ideas'}
+        </button>
+      ) : (
+        <div className="reachos-reply-suggestions">
+          {replySuggestions.map((s, i) => (
+            <div key={i} className="reachos-reply-suggestion" onClick={() => navigator.clipboard.writeText(s)}>
+              {s}
+              <span className="reachos-rewrite-copy">Copy</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SelfReplyGenerator — generates a self-reply to kickstart conversations
+// ---------------------------------------------------------------------------
+function SelfReplyGenerator({ text }: { text: string }) {
+  const [selfReply, setSelfReply] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleGenerate = () => {
+    setLoading(true);
+    chrome.runtime.sendMessage(
+      { type: 'API_REQUEST', endpoint: '/api/suggest', method: 'POST',
+        body: { content: text, type: 'self-reply' } },
+      (response) => {
+        setLoading(false);
+        if (response?.ok && response.data?.success && response.data.suggestions?.length > 0) {
+          setSelfReply(response.data.suggestions[0]);
+        }
+      }
+    );
+  };
+
+  // Reset when text changes
+  useEffect(() => { setSelfReply(null); }, [text]);
+
+  if (!text || text.length < 20) return null;
+
+  return (
+    <div className="reachos-self-reply">
+      <div className="reachos-section-label">SELF-REPLY STRATEGY</div>
+      {selfReply ? (
+        <div className="reachos-reply-suggestion" onClick={() => navigator.clipboard.writeText(selfReply)}>
+          <div style={{ fontSize: '10px', color: '#71767b', marginBottom: '4px' }}>
+            Post this as a reply to your own tweet immediately after posting:
+          </div>
+          {selfReply}
+          <span className="reachos-rewrite-copy">Copy</span>
+        </div>
+      ) : (
+        <button className="reachos-rewrite-btn" onClick={handleGenerate} disabled={loading} style={{ background: 'linear-gradient(135deg, #00ba7c, #059669)' }}>
+          {loading ? 'Generating...' : '\uD83D\uDD04 Generate Self-Reply (starts conversation)'}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Tier color and label mappings
 // ---------------------------------------------------------------------------
 const TIER_COLORS: Record<ScoreTier, string> = {
@@ -398,8 +502,12 @@ export function ScoreOverlay({ analysis, isServerPending, serverError, currentTe
             <ScoreCircle score={analysis.reachScore} tier={analysis.tier} />
             <BreakdownBars breakdown={analysis.breakdown} />
             <SuggestionList suggestions={analysis.suggestions} />
+            <ReplyCoachBanner />
             {currentText && (
               <RewriteSection text={currentText} isServerPending={isServerPending} originalScore={analysis.reachScore} />
+            )}
+            {currentText && (
+              <SelfReplyGenerator text={currentText} />
             )}
             <AISlopBadge
               aiSlopScore={analysis.aiSlopScore}
