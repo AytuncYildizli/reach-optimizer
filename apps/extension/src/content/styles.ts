@@ -29,7 +29,9 @@ export const OVERLAY_STYLES = `
   border-radius: 16px;
   width: 300px;
   box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  max-height: 90vh;
   pointer-events: auto;
 }
 
