@@ -18,3 +18,6 @@ dist
 # vercel
 .vercel
 .env*.local
+
+# Turbo prune output (Vercel deploy)
+out/
