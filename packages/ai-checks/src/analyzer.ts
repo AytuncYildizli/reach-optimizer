@@ -16,8 +16,10 @@ export interface ServerAnalysisResult {
 
 export class AIAnalyzer {
   private client: Anthropic;
+  private apiKey: string;
 
   constructor(apiKey: string) {
+    this.apiKey = apiKey;
     this.client = createClaudeClient(apiKey);
   }
 
@@ -54,23 +56,35 @@ export class AIAnalyzer {
   async generateHookSuggestions(text: string): Promise<string[]> {
     const prompt = buildHookSuggestionsPrompt(text);
 
-    // Direct Claude call with full error visibility
+    // Use fetch directly (SDK has connection issues on Vercel serverless)
     try {
-      const response = await this.client.messages.create({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 512,
-        temperature: 0.3,
-        system: prompt.system,
-        messages: [{ role: 'user', content: prompt.user }],
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': this.apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 512,
+          temperature: 0.3,
+          system: prompt.system,
+          messages: [{ role: 'user', content: prompt.user }],
+        }),
       });
 
-      const textBlock = response.content.find(b => b.type === 'text');
-      const raw = textBlock?.text ?? '';
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Anthropic API ${response.status}: ${errText.substring(0, 200)}`);
+      }
+
+      const data = await response.json();
+      const raw = data.content?.[0]?.text ?? '';
       const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       const result = JSON.parse(cleaned) as { suggestions: string[] };
       return result?.suggestions ?? [];
     } catch (error) {
-      // Surface error instead of swallowing
       throw new Error('Claude hook suggestions failed: ' + (error instanceof Error ? error.message : String(error)));
     }
   }
