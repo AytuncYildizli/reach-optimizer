@@ -2,5 +2,11 @@
   "framework": "nextjs",
   "installCommand": "corepack enable && pnpm install",
   "buildCommand": "cd apps/api && npx prisma generate && npx next build",
-  "outputDirectory": "apps/api/.next"
+  "outputDirectory": "apps/api/.next",
+  "crons": [
+    {
+      "path": "/api/cron/fetch-metrics",
+      "schedule": "*/15 * * * *"
+    }
+  ]
 }

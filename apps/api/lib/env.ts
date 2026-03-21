@@ -25,4 +25,7 @@ export const env = {
   get APP_URL() {
     return process.env.APP_URL ?? 'http://localhost:3100';
   },
+  get TWITTER_API_IO_KEY() {
+    return process.env.TWITTER_API_IO_KEY ?? '';
+  },
 };
