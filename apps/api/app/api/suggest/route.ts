@@ -43,15 +43,10 @@ export async function POST(request: NextRequest) {
     const analyzer = new AIAnalyzer(env.ANTHROPIC_API_KEY);
     const suggestions = await analyzer.generateHookSuggestions(body.content);
 
-    if (suggestions.length === 0) {
-      console.warn('[Suggest] Claude returned empty suggestions for:', body.content.substring(0, 50));
-    }
-
-    return NextResponse.json({ success: true, suggestions } satisfies SuggestResponse);
+    return NextResponse.json({ success: true, suggestions, debug: { count: suggestions.length, apiKeyPrefix: env.ANTHROPIC_API_KEY.substring(0, 10) + '...' } });
   } catch (error) {
-    console.error('[Suggest] Error:', error);
     return NextResponse.json(
-      { success: false, error: 'AI generation failed: ' + (error instanceof Error ? error.message : 'unknown'), code: 'INTERNAL_ERROR' } satisfies ErrorResponse,
+      { success: false, error: 'AI generation failed: ' + (error instanceof Error ? error.message : String(error)), code: 'INTERNAL_ERROR' } as ErrorResponse,
       { status: 500 }
     );
   }
