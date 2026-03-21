@@ -338,6 +338,10 @@ interface ScoreOverlayProps {
 
 export function ScoreOverlay({ analysis, isServerPending, serverError, currentText }: ScoreOverlayProps) {
   const [minimized, setMinimized] = useState(false);
+  const [hidden, setHidden] = useState(false);
+
+  // Hidden = completely invisible, show via extension popup later
+  if (hidden) return null;
 
   if (minimized && analysis) {
     return (
@@ -369,6 +373,13 @@ export function ScoreOverlay({ analysis, isServerPending, serverError, currentTe
                 &#x2212;
               </button>
             )}
+            <button
+              className="reachos-minimize-btn"
+              onClick={() => setHidden(true)}
+              title="Close"
+            >
+              &#x2715;
+            </button>
           </div>
         </div>
 
