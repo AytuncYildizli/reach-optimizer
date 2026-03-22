@@ -28,4 +28,7 @@ export const env = {
   get TWITTER_API_IO_KEY() {
     return process.env.TWITTER_API_IO_KEY ?? '';
   },
+  get OPS_DATABASE_URL() {
+    return process.env.OPS_DATABASE_URL ?? '';
+  },
 };
