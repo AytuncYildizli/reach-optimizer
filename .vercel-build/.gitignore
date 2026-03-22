@@ -1,0 +1,23 @@
+# dependencies
+node_modules
+
+# build outputs
+dist
+.next
+
+# turbo
+.turbo
+
+# environment variables
+.env
+.env.local
+
+# typescript
+*.tsbuildinfo
+
+# vercel
+.vercel
+.env*.local
+
+# Turbo prune output (Vercel deploy)
+out/
