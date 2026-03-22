@@ -162,26 +162,44 @@ function onComposerTextChange(_composerEl: HTMLElement, text: string): void {
     return;
   }
 
-  // 1. Detect media attachments (expanded selectors for X.com variations)
-  const hasMedia = !!(
-    document.querySelector('[data-testid="attachments"]') ||
-    document.querySelector('[data-testid="tweetPhoto"]') ||
-    document.querySelector('[data-testid="videoComponent"]') ||
-    document.querySelector('[data-testid="tweetButtonInline"] + div img') ||
-    document.querySelector('[data-testid="attachmentsContainer"]') ||
-    document.querySelector('div[data-testid="videoPlayer"]') ||
-    // Check for media preview thumbnails in composer
-    document.querySelector('[role="group"] img[src*="pbs.twimg"]') ||
-    document.querySelector('[role="group"] video') ||
-    // Check if remove media button exists (means media is attached)
-    document.querySelector('[data-testid="removeMedia"]') ||
-    document.querySelector('[aria-label="Remove media"]') ||
-    // Broad check: any image/video inside the compose dialog
-    (() => {
-      const dialog = document.querySelector('[data-testid="tweetTextarea_0"]')?.closest('[role="dialog"]');
-      return dialog && (dialog.querySelector('img[src*="pbs.twimg"]') || dialog.querySelector('video'));
-    })()
-  );
+  // 1. Detect media attachments — find the composer's parent container and check for media inside it
+  const hasMedia = (() => {
+    // Strategy: find the composer element, walk up to find the compose container, check for media inside
+    const composer = document.querySelector('[data-testid="tweetTextarea_0"]');
+    if (!composer) return false;
+
+    // Walk up to the closest large container (the compose form/dialog)
+    const container = composer.closest('[role="dialog"]')
+      || composer.closest('[data-testid="primaryColumn"]')
+      || composer.parentElement?.parentElement?.parentElement?.parentElement?.parentElement;
+
+    if (!container) return false;
+
+    // Check for any media indicators inside the compose container
+    return !!(
+      container.querySelector('[data-testid="attachments"]') ||
+      container.querySelector('[data-testid="removeMedia"]') ||
+      container.querySelector('[aria-label="Remove media"]') ||
+      container.querySelector('[aria-label="Remove"]') ||
+      container.querySelector('img[src*="pbs.twimg"]') ||
+      container.querySelector('img[src*="ton.twimg"]') ||
+      container.querySelector('video') ||
+      container.querySelector('[data-testid="videoPlayer"]') ||
+      container.querySelector('[data-testid="tweetPhoto"]') ||
+      // X.com shows media thumbnails as small img elements inside the composer area
+      container.querySelectorAll('img[draggable="true"]').length > 0 ||
+      // Check for the media upload progress/preview area (usually a div with images below the textarea)
+      (() => {
+        const imgs = container.querySelectorAll('img');
+        // If there are images that are NOT avatars (avatars are typically 40x40 or circular)
+        for (const img of imgs) {
+          const w = img.width || img.naturalWidth;
+          if (w > 60) return true; // Likely a media preview, not an avatar
+        }
+        return false;
+      })()
+    );
+  })();
 
   // 2. Run client rules immediately
   const input: TweetInput = {

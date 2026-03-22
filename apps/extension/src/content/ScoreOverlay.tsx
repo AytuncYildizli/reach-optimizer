@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import type { AnalysisResult, ScoreBreakdown, ScoreTier, Suggestion, TrendingAlignment } from "@reach/shared-types";
+import { t } from "./i18n";
 
 // ---------------------------------------------------------------------------
 // AutoOptimizeSection — iterative tweet optimization (autoresearch-inspired)
@@ -62,10 +63,10 @@ function AutoOptimizeSection({ text, originalScore }: { text: string; originalSc
 
     return (
       <div className="reachos-rewrite-section">
-        <div className="reachos-section-label">AUTO-OPTIMIZE RESULTS</div>
+        <div className="reachos-section-label">{t('autoOptResults')}</div>
         <div className="reachos-autoopt-summary">
           <span className="reachos-autoopt-badge">
-            {result.rounds.length} rounds {'\u00B7'} {result.totalGenerated} variations {'\u00B7'} +{result.improvement} improvement
+            {result.rounds.length} {t('rounds')} {'\u00B7'} {result.totalGenerated} {t('variations')} {'\u00B7'} +{result.improvement} {t('improvement')}
           </span>
         </div>
         {topResults.map((s, i) => (
@@ -75,16 +76,16 @@ function AutoOptimizeSection({ text, originalScore }: { text: string; originalSc
                 {i === 0 ? '\uD83C\uDFC6' : '\uD83D\uDFE2'} {s.score}
               </span>
               <span className={`reachos-rewrite-delta ${s.score - originalScore >= 0 ? 'positive' : 'negative'}`}>
-                {s.score - originalScore >= 0 ? '+' : ''}{s.score - originalScore} vs yours
+                {s.score - originalScore >= 0 ? '+' : ''}{s.score - originalScore} {t('vsYours')}
               </span>
             </div>
             <div className="reachos-rewrite-text">{s.text}</div>
-            <div className="reachos-rewrite-copy">Copy</div>
+            <div className="reachos-rewrite-copy">{t('copy')}</div>
           </div>
         ))}
         <button className="reachos-rewrite-btn" onClick={() => { setResult(null); setCurrentRound(0); }}
           style={{ marginTop: '6px', background: 'transparent', border: '1px solid #2f3336', color: '#71767b' }}>
-          Run Again
+          {t('runAgain')}
         </button>
       </div>
     );
@@ -94,7 +95,7 @@ function AutoOptimizeSection({ text, originalScore }: { text: string; originalSc
     <div className="reachos-rewrite-section">
       {loading ? (
         <div className="reachos-autoopt-progress">
-          <div className="reachos-section-label">AUTO-OPTIMIZING...</div>
+          <div className="reachos-section-label">{t('autoOptimizing')}</div>
           <div className="reachos-autoopt-bar-bg">
             <div className="reachos-autoopt-bar" style={{ width: `${(currentRound / 5) * 100}%` }} />
           </div>
@@ -103,7 +104,7 @@ function AutoOptimizeSection({ text, originalScore }: { text: string; originalSc
       ) : (
         <button className="reachos-rewrite-btn" onClick={handleOptimize} disabled={!text || text.length < 10}
           style={{ background: 'linear-gradient(135deg, #8b5cf6, #6d28d9)' }}>
-          {'\u2728'} Auto-Optimize (iterative AI rewriting)
+          {'\u2728'} {t('autoOptimize')}
         </button>
       )}
     </div>
@@ -147,12 +148,12 @@ function ReplyCoachBanner() {
       <div className="reachos-reply-coach-header">
         <span className="reachos-reply-coach-icon">{'\uD83D\uDCAC'}</span>
         <span className="reachos-reply-coach-text">
-          <strong>{replyData.count} replies</strong> on {replyData.tweets} tweets {'\u2014'} reply back for <strong>150x boost!</strong>
+          <strong>{replyData.count} {t('replyCoach')}</strong> on {replyData.tweets} tweets {'\u2014'} {t('replyCoachBoost')}
         </span>
       </div>
       {replySuggestions.length === 0 ? (
         <button className="reachos-reply-coach-btn" onClick={handleGetReplies} disabled={loading}>
-          {loading ? 'Generating...' : '\uD83D\uDCA1 Get Reply Ideas'}
+          {loading ? t('generating') : `\uD83D\uDCA1 ${t('getReplyIdeas')}`}
         </button>
       ) : (
         <div className="reachos-reply-suggestions">
