@@ -25,19 +25,25 @@ async function generateSelfReply(apiKey: string, tweetContent: string): Promise<
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 512,
       temperature: 0.7,
-      system: 'You generate self-reply tweets for X/Twitter. A self-reply is posted by the author as a reply to their own tweet, immediately after posting. Return ONLY valid JSON.',
+      system: 'You write self-replies for X/Twitter. A self-reply is the FIRST reply the author posts under their own tweet. It must be directly related to the tweet content. Return ONLY valid JSON.',
       messages: [{
         role: 'user',
-        content: `Generate 1 self-reply for this tweet. The self-reply should:
-- Add a bonus insight, tip, or question that complements the original tweet
-- Encourage followers to join the conversation (reply-to-reply chains = 150x algorithm boost)
-- Feel natural, not forced — like a genuine afterthought or "one more thing..."
-- Be under 200 characters
-- NOT repeat the same info from the original tweet
+        content: `Write 1 self-reply for this tweet. STRICT RULES:
+
+1. The reply MUST be about the SAME TOPIC as the original tweet — not a vague question
+2. Add ONE specific detail, hot take, or follow-up thought about the topic
+3. Ask a SPECIFIC question related to the content (not generic like "what do you think?")
+4. Under 200 characters
+5. No emoji unless the original has them
+6. Sound like a real person continuing their thought, not a bot
+
+BAD example (generic): "What made it special for you?"
+GOOD example for a tech tweet: "The craziest part? The baseline config outperformed 90% of hand-tuned setups. Has anyone else seen this?"
+GOOD example for a news tweet: "Turkey's been doing this for 3 years. Nobody reported it."
 
 Original tweet: "${tweetContent}"
 
-Return JSON: {"suggestions": ["self-reply text here"]}`,
+Return JSON: {"suggestions": ["self-reply"]}`,
       }],
     }),
   });

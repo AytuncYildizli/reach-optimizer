@@ -160,7 +160,7 @@ function ReplyCoachBanner() {
           {replySuggestions.map((s, i) => (
             <div key={i} className="reachos-reply-suggestion" onClick={() => navigator.clipboard.writeText(s)}>
               {s}
-              <span className="reachos-rewrite-copy">Copy</span>
+              <span className="reachos-rewrite-copy">{t('copy')}</span>
             </div>
           ))}
         </div>
@@ -209,18 +209,18 @@ function SelfReplyGenerator({ text }: { text: string }) {
 
   return (
     <div className="reachos-self-reply">
-      <div className="reachos-section-label">SELF-REPLY STRATEGY</div>
+      <div className="reachos-section-label">{t('selfReplyStrategy')}</div>
       {selfReply ? (
         <div className="reachos-reply-suggestion" onClick={() => { navigator.clipboard.writeText(selfReply); setCopiedReply(true); }}>
           <div style={{ fontSize: '10px', color: '#ffd400', marginBottom: '4px', fontWeight: 600 }}>
-            Copied! Post your tweet first, then paste this as your first reply:
+            {t('selfReplyInstruction')}
           </div>
           <div style={{ fontSize: '12px', lineHeight: 1.4 }}>{selfReply}</div>
-          <span className="reachos-rewrite-copy">{copiedReply ? 'Copied!' : 'Copy again'}</span>
+          <span className="reachos-rewrite-copy">{copiedReply ? t('copied') : t('copyAgain')}</span>
         </div>
       ) : (
         <button className="reachos-rewrite-btn" onClick={handleGenerate} disabled={loading} style={{ background: 'linear-gradient(135deg, #00ba7c, #059669)' }}>
-          {loading ? 'Generating...' : '\uD83D\uDD04 Generate Self-Reply (starts conversation)'}
+          {loading ? t('generating') : `\uD83D\uDD04 ${t('generateSelfReply')}`}
         </button>
       )}
     </div>
@@ -470,7 +470,7 @@ interface AISlopBadgeProps {
 }
 
 function getAiSlopVerdict(score: number): { className: string; label: string } {
-  if (score <= 20) return { className: "natural", label: "Natural \u2014 Human-written" };
+  if (score <= 20) return { className: "natural", label: t('natural') };
   if (score <= 40) return { className: "mild", label: "Mild AI patterns" };
   if (score <= 60) return { className: "moderate", label: "Moderate AI patterns" };
   if (score <= 80) return { className: "high", label: "High AI probability" };
@@ -484,7 +484,7 @@ function AISlopBadge({ aiSlopScore, isServerPending, isServerEnhanced }: AISlopB
   if (aiSlopScore !== null) {
     const verdict = getAiSlopVerdict(aiSlopScore);
     badgeClass += ` ${verdict.className}`;
-    text = `AI Check: ${aiSlopScore}/100 \u2014 ${verdict.label}`;
+    text = `${t('aiCheck')}: ${aiSlopScore}/100 \u2014 ${verdict.label}`;
   } else if (isServerPending) {
     badgeClass += " reachos-pending";
     text = "AI Check: Analyzing...";
