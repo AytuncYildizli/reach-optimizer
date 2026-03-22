@@ -2,97 +2,110 @@ import { useState, useEffect } from "react";
 import type { AnalysisResult, ScoreBreakdown, ScoreTier, Suggestion } from "@reach/shared-types";
 
 // ---------------------------------------------------------------------------
-// RewriteSection — AI rewrite suggestions
+// AutoOptimizeSection — iterative tweet optimization (autoresearch-inspired)
 // ---------------------------------------------------------------------------
-import { ScoreEngine, allClientRules } from "@reach/rules-engine";
-
-const rewriteScorer = new ScoreEngine(allClientRules);
-
-interface ScoredSuggestion {
-  text: string;
-  score: number;
-  tier: string;
-  delta: number; // score difference vs original
-}
-
-function scoreRewrite(rewriteText: string, _originalText: string, originalScore: number): ScoredSuggestion {
-  // Rewrites are now full tweets (not just hooks), score directly
-  const result = rewriteScorer.evaluate({ text: rewriteText, platform: 'x', isThread: false, hasMedia: false });
-  return {
-    text: rewriteText,
-    score: result.reachScore,
-    tier: result.tier,
-    delta: result.reachScore - originalScore,
-  };
-}
-
-const TIER_EMOJI: Record<string, string> = {
-  critical: '🔴', below_average: '🟡', good: '🟢', excellent: '⭐', perfect: '🔥',
-};
-
-function RewriteSection({ text, isServerPending, originalScore }: { text: string; isServerPending: boolean; originalScore: number }) {
-  const [scored, setScored] = useState<ScoredSuggestion[]>([]);
+function AutoOptimizeSection({ text, originalScore }: { text: string; originalScore: number }) {
+  const [result, setResult] = useState<{
+    rounds: { round: number; bestText: string; bestScore: number; delta: number; alternatives: { text: string; score: number }[] }[];
+    bestText: string;
+    finalScore: number;
+    improvement: number;
+    totalGenerated: number;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [currentRound, setCurrentRound] = useState(0);
 
-  // Reset rewrites when text changes significantly
-  useEffect(() => {
-    setScored([]);
-  }, [text]);
+  useEffect(() => { setResult(null); setCurrentRound(0); }, [text]);
 
-  const handleRewrite = () => {
+  const handleOptimize = () => {
     setLoading(true);
-    // Timeout fallback — if no response in 15s, reset loading
-    const timeout = setTimeout(() => setLoading(false), 15000);
+    setCurrentRound(1);
+    const timeout = setTimeout(() => { setLoading(false); setCurrentRound(0); }, 60000);
+
+    // Simulate round progress (since we can't stream)
+    let round = 1;
+    const progressInterval = setInterval(() => {
+      round++;
+      if (round <= 5) setCurrentRound(round);
+      else clearInterval(progressInterval);
+    }, 3000); // ~3s per round estimate
+
     try {
       chrome.runtime.sendMessage(
-        { type: 'API_REQUEST', endpoint: '/api/suggest', method: 'POST', body: { content: text, type: 'hook' } },
+        { type: 'API_REQUEST', endpoint: '/api/tweets/auto-optimize', method: 'POST',
+          body: { content: text, maxRounds: 5 } },
         (response) => {
           clearTimeout(timeout);
+          clearInterval(progressInterval);
           setLoading(false);
-          if (chrome.runtime.lastError) {
-            console.error('[ReachOS] sendMessage error:', chrome.runtime.lastError);
-            return;
-          }
-          if (response?.ok && response.data?.success && response.data.suggestions?.length > 0) {
-            const results = response.data.suggestions
-              .map((s: string) => scoreRewrite(s, text, originalScore))
-              .sort((a: ScoredSuggestion, b: ScoredSuggestion) => b.score - a.score);
-            setScored(results);
+          if (chrome.runtime.lastError) return;
+          if (response?.ok && response.data?.success) {
+            setResult(response.data.data);
+            setCurrentRound(response.data.data.rounds.length);
           }
         }
       );
-    } catch (err) {
+    } catch {
       clearTimeout(timeout);
+      clearInterval(progressInterval);
       setLoading(false);
-      console.error('[ReachOS] Failed to send rewrite request:', err);
     }
   };
 
-  if (scored.length > 0) {
+  if (result) {
+    // Show final results — collect top 3 unique alternatives across all rounds
+    const topResults = result.rounds
+      .flatMap(r => r.alternatives)
+      .sort((a, b) => b.score - a.score)
+      .filter((v, i, arr) => arr.findIndex(x => x.text === v.text) === i)
+      .slice(0, 3);
+
     return (
       <div className="reachos-rewrite-section">
-        <div className="reachos-section-label">AI REWRITES</div>
-        {scored.map((s, i) => (
+        <div className="reachos-section-label">AUTO-OPTIMIZE RESULTS</div>
+        <div className="reachos-autoopt-summary">
+          <span className="reachos-autoopt-badge">
+            {result.rounds.length} rounds {'\u00B7'} {result.totalGenerated} variations {'\u00B7'} +{result.improvement} improvement
+          </span>
+        </div>
+        {topResults.map((s, i) => (
           <div key={i} className="reachos-rewrite-item" onClick={() => navigator.clipboard.writeText(s.text)}>
             <div className="reachos-rewrite-header">
-              <span className="reachos-rewrite-score">{TIER_EMOJI[s.tier] || ''} {s.score}</span>
-              <span className={`reachos-rewrite-delta ${s.delta >= 0 ? 'positive' : 'negative'}`}>
-                {s.delta >= 0 ? '+' : ''}{s.delta} vs yours
+              <span className="reachos-rewrite-score">
+                {i === 0 ? '\uD83C\uDFC6' : '\uD83D\uDFE2'} {s.score}
+              </span>
+              <span className={`reachos-rewrite-delta ${s.score - originalScore >= 0 ? 'positive' : 'negative'}`}>
+                {s.score - originalScore >= 0 ? '+' : ''}{s.score - originalScore} vs yours
               </span>
             </div>
             <div className="reachos-rewrite-text">{s.text}</div>
             <div className="reachos-rewrite-copy">Copy</div>
           </div>
         ))}
+        <button className="reachos-rewrite-btn" onClick={() => { setResult(null); setCurrentRound(0); }}
+          style={{ marginTop: '6px', background: 'transparent', border: '1px solid #2f3336', color: '#71767b' }}>
+          Run Again
+        </button>
       </div>
     );
   }
 
   return (
     <div className="reachos-rewrite-section">
-      <button className="reachos-rewrite-btn" onClick={handleRewrite} disabled={loading || !text}>
-        {loading ? 'Generating...' : '\u2728 Get AI Rewrites'}
-      </button>
+      {loading ? (
+        <div className="reachos-autoopt-progress">
+          <div className="reachos-section-label">AUTO-OPTIMIZING...</div>
+          <div className="reachos-autoopt-bar-bg">
+            <div className="reachos-autoopt-bar" style={{ width: `${(currentRound / 5) * 100}%` }} />
+          </div>
+          <div className="reachos-autoopt-round">Round {currentRound}/5 {'\u2014'} testing variations...</div>
+        </div>
+      ) : (
+        <button className="reachos-rewrite-btn" onClick={handleOptimize} disabled={!text || text.length < 10}
+          style={{ background: 'linear-gradient(135deg, #8b5cf6, #6d28d9)' }}>
+          {'\u2728'} Auto-Optimize (iterative AI rewriting)
+        </button>
+      )}
     </div>
   );
 }
@@ -520,7 +533,7 @@ export function ScoreOverlay({ analysis, isServerPending, serverError, currentTe
             <SuggestionList suggestions={analysis.suggestions} />
             <ReplyCoachBanner />
             {currentText && (
-              <RewriteSection text={currentText} isServerPending={isServerPending} originalScore={analysis.reachScore} />
+              <AutoOptimizeSection text={currentText} originalScore={analysis.reachScore} />
             )}
             {currentText && (
               <SelfReplyGenerator text={currentText} />

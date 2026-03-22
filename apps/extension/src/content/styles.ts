@@ -499,4 +499,36 @@ export const OVERLAY_STYLES = `
 .reachos-self-reply {
   padding: 8px 16px 12px;
 }
+
+/* Auto-Optimize */
+.reachos-autoopt-progress {
+  padding: 4px 0;
+}
+.reachos-autoopt-bar-bg {
+  width: 100%;
+  height: 4px;
+  background: #2f3336;
+  border-radius: 2px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+.reachos-autoopt-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #8b5cf6, #6d28d9);
+  border-radius: 2px;
+  transition: width 0.5s ease;
+}
+.reachos-autoopt-round {
+  font-size: 11px;
+  color: #71767b;
+  text-align: center;
+}
+.reachos-autoopt-summary {
+  margin-bottom: 8px;
+}
+.reachos-autoopt-badge {
+  font-size: 11px;
+  color: #8b5cf6;
+  font-weight: 600;
+}
 `;
