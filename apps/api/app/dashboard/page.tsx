@@ -94,17 +94,18 @@ const dailySuggestions = [
 
 // -- Component --
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ admin?: string }>;
+}) {
+  const params = await searchParams;
+  const isAdmin = params.admin === '1';
+
   let tweets: Awaited<ReturnType<typeof fetchTweets>> = [];
   let dbError = false;
 
-  try {
-    tweets = await fetchTweets();
-  } catch {
-    dbError = true;
-  }
-
-  // Fetch optimized tweets from ops DB (yellow-jacket)
+  // Only fetch personal/ops data in admin mode
   let opsTweets: Array<{
     id: number;
     text: string;
@@ -114,23 +115,49 @@ export default async function DashboardPage() {
     char_count: number;
     created_at: string;
   }> = [];
-  try {
-    if (process.env.OPS_DATABASE_URL) {
-      const opsClient = new pg.Client({ connectionString: process.env.OPS_DATABASE_URL });
-      await opsClient.connect();
-      const { rows } = await opsClient.query(`
-        SELECT id, tweet_text as text, rating as score, status, hook_type,
-               char_count, created_at
-        FROM tweets
-        WHERE rating IS NOT NULL
-        ORDER BY rating DESC
-        LIMIT 20
-      `);
-      opsTweets = rows;
-      await opsClient.end();
+  let rulePerformance: Awaited<ReturnType<typeof analyzeRulePerformance>> = [];
+  let calibration: CalibrationReport | null = null;
+
+  if (isAdmin) {
+    try {
+      tweets = await fetchTweets();
+    } catch {
+      dbError = true;
     }
-  } catch (e) {
-    console.error('Ops DB error:', e);
+
+    // Fetch optimized tweets from ops DB (yellow-jacket)
+    try {
+      if (process.env.OPS_DATABASE_URL) {
+        const opsClient = new pg.Client({ connectionString: process.env.OPS_DATABASE_URL });
+        await opsClient.connect();
+        const { rows } = await opsClient.query(`
+          SELECT id, tweet_text as text, rating as score, status, hook_type,
+                 char_count, created_at
+          FROM tweets
+          WHERE rating IS NOT NULL
+          ORDER BY rating DESC
+          LIMIT 20
+        `);
+        opsTweets = rows;
+        await opsClient.end();
+      }
+    } catch (e) {
+      console.error('Ops DB error:', e);
+    }
+
+    // Learning Insights data
+    try {
+      rulePerformance = await analyzeRulePerformance();
+    } catch {
+      // Non-critical, skip if fails
+    }
+
+    // Calibration data
+    try {
+      calibration = await generateCalibrationReport();
+    } catch {
+      // Non-critical, skip if fails
+    }
   }
 
   // Stats
@@ -147,21 +174,6 @@ export default async function DashboardPage() {
         )
       : 0;
 
-  // Learning Insights data
-  let rulePerformance: Awaited<ReturnType<typeof analyzeRulePerformance>> = [];
-  try {
-    rulePerformance = await analyzeRulePerformance();
-  } catch {
-    // Non-critical, skip if fails
-  }
-
-  // Calibration data
-  let calibration: CalibrationReport | null = null;
-  try {
-    calibration = await generateCalibrationReport();
-  } catch {
-    // Non-critical, skip if fails
-  }
   const topPositive = rulePerformance.filter((r) => r.lift > 0).slice(0, 5);
   const topNegative = rulePerformance.filter((r) => r.lift < 0).slice(0, 5);
 
@@ -190,6 +202,9 @@ export default async function DashboardPage() {
           <div style={styles.logoRow}>
             <span style={styles.logoDot} />
             <h1 style={styles.logoText}>ReachOS Dashboard</h1>
+            {isAdmin && (
+              <span style={styles.adminBadge}>ADMIN</span>
+            )}
           </div>
           <span style={styles.betaBadge}>BETA</span>
         </div>
@@ -198,27 +213,37 @@ export default async function DashboardPage() {
       <main style={styles.main}>
         {/* Stats Bar */}
         <section style={styles.statsBar}>
-          <StatCard label="Tweets Tracked" value={String(totalTweets)} />
+          <StatCard label="Tweets Tracked" value={isAdmin ? String(totalTweets) : '0'} />
           <StatCard
             label="Avg Reach Score"
-            value={totalTweets > 0 ? String(avgScore) : '--'}
-            color={totalTweets > 0 ? scoreColor(avgScore) : colors.textSecondary}
+            value={isAdmin && totalTweets > 0 ? String(avgScore) : '--'}
+            color={isAdmin && totalTweets > 0 ? scoreColor(avgScore) : colors.textSecondary}
           />
           <StatCard
             label="Avg Views"
-            value={totalTweets > 0 ? formatNumber(avgViews) : '--'}
+            value={isAdmin && totalTweets > 0 ? formatNumber(avgViews) : '--'}
           />
           <StatCard
             label="Optimization Impact"
-            value={impact > 0 ? `+${impact}%` : impact === 0 ? '--' : `${impact}%`}
-            color={impact > 0 ? colors.green : impact < 0 ? colors.red : colors.textSecondary}
+            value={isAdmin && impact !== 0 ? (impact > 0 ? `+${impact}%` : `${impact}%`) : '--'}
+            color={isAdmin && impact > 0 ? colors.green : isAdmin && impact < 0 ? colors.red : colors.textSecondary}
           />
         </section>
 
-        {/* Tweet List */}
+        {/* Tweet List / Auth Gate */}
         <section style={styles.section}>
           <h2 style={styles.sectionTitle}>Recent Tweets</h2>
-          {dbError ? (
+          {!isAdmin ? (
+            <div style={styles.emptyState}>
+              <p style={{ color: colors.textSecondary, margin: '0 0 12px 0', fontSize: 15 }}>
+                Track your tweets with the ReachOS extension.
+              </p>
+              <p style={{ color: colors.textSecondary, margin: 0, fontSize: 14, lineHeight: 1.6 }}>
+                Install it, write tweets on X.com, and your performance data will appear here.
+                Sign in with the extension to start tracking your posts.
+              </p>
+            </div>
+          ) : dbError ? (
             <div style={styles.emptyState}>
               <p style={{ color: colors.yellow, margin: 0 }}>
                 Unable to connect to database. Showing empty state.
@@ -273,8 +298,8 @@ export default async function DashboardPage() {
           )}
         </section>
 
-        {/* Optimization Leaderboard */}
-        {opsTweets.length > 0 && (
+        {/* Optimization Leaderboard (admin only) */}
+        {isAdmin && opsTweets.length > 0 && (
           <section style={styles.section}>
             <h2 style={styles.sectionTitle}>Optimization Leaderboard</h2>
             <p style={{ color: colors.textSecondary, margin: '0 0 12px 0', fontSize: 14 }}>
@@ -341,7 +366,8 @@ export default async function DashboardPage() {
           </section>
         )}
 
-        {/* Learning Insights */}
+        {/* Learning Insights (admin only) */}
+        {isAdmin && (
         <section style={styles.section}>
           <h2 style={styles.sectionTitle}>Learning Insights</h2>
           <p style={{ color: colors.textSecondary, margin: '0 0 16px 0', fontSize: 14 }}>
@@ -441,8 +467,10 @@ export default async function DashboardPage() {
             </div>
           )}
         </section>
+        )}
 
-        {/* Score Calibration */}
+        {/* Score Calibration (admin only) */}
+        {isAdmin && (
         <section style={styles.section}>
           <h2 style={styles.sectionTitle}>Score Calibration</h2>
           <p style={{ color: colors.textSecondary, margin: '0 0 16px 0', fontSize: 14 }}>
@@ -682,6 +710,7 @@ export default async function DashboardPage() {
             </div>
           )}
         </section>
+        )}
 
         {/* Optimal Posting Times — Weekly Heatmap */}
         <section style={styles.section}>
@@ -977,6 +1006,16 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 600,
     color: colors.yellow,
     border: `1px solid ${colors.yellow}66`,
+    borderRadius: 4,
+    padding: '2px 8px',
+    letterSpacing: 1,
+  },
+  adminBadge: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: colors.red,
+    backgroundColor: colors.red + '18',
+    border: `1px solid ${colors.red}66`,
     borderRadius: 4,
     padding: '2px 8px',
     letterSpacing: 1,
