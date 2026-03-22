@@ -500,6 +500,33 @@ export const OVERLAY_STYLES = `
   padding: 8px 16px 12px;
 }
 
+/* Timing Indicator */
+.reachos-timing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px 10px;
+  font-size: 11px;
+  line-height: 1.3;
+}
+.reachos-timing-icon {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.reachos-timing-text {
+  color: #71767b;
+}
+.reachos-timing-good .reachos-timing-text {
+  color: #00ba7c;
+  font-weight: 600;
+}
+.reachos-timing-later .reachos-timing-text {
+  color: #ffd400;
+}
+.reachos-timing-off .reachos-timing-text {
+  color: #71767b;
+}
+
 /* Auto-Optimize */
 .reachos-autoopt-progress {
   padding: 4px 0;
@@ -530,5 +557,49 @@ export const OVERLAY_STYLES = `
   font-size: 11px;
   color: #8b5cf6;
   font-weight: 600;
+}
+
+/* Trending Badge */
+.reachos-trending-section {
+  padding: 0 16px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.reachos-trending-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: linear-gradient(135deg, rgba(255,122,0,0.12), rgba(255,60,0,0.08));
+  border: 1px solid rgba(255,122,0,0.3);
+  border-radius: 8px;
+  animation: reachos-trending-glow 2s ease-in-out infinite;
+}
+@keyframes reachos-trending-glow {
+  0%, 100% { border-color: rgba(255,122,0,0.3); }
+  50% { border-color: rgba(255,122,0,0.6); }
+}
+.reachos-trending-icon {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.reachos-trending-text {
+  font-size: 11px;
+  font-weight: 600;
+  color: #ff7a00;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.reachos-trending-bonus {
+  font-size: 10px;
+  font-weight: 700;
+  color: #00ba7c;
+  background: rgba(0,186,124,0.12);
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
 }
 `;

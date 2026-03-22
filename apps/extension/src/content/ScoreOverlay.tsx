@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import type { AnalysisResult, ScoreBreakdown, ScoreTier, Suggestion } from "@reach/shared-types";
+import type { AnalysisResult, ScoreBreakdown, ScoreTier, Suggestion, TrendingAlignment } from "@reach/shared-types";
 
 // ---------------------------------------------------------------------------
 // AutoOptimizeSection — iterative tweet optimization (autoresearch-inspired)
@@ -222,6 +222,49 @@ function SelfReplyGenerator({ text }: { text: string }) {
           {loading ? 'Generating...' : '\uD83D\uDD04 Generate Self-Reply (starts conversation)'}
         </button>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// TimingIndicator — shows best posting time below the score
+// ---------------------------------------------------------------------------
+function TimingIndicator() {
+  const [message, setMessage] = useState<string | null>(null);
+  const [status, setStatus] = useState<'good_now' | 'better_later' | 'off_peak' | null>(null);
+
+  useEffect(() => {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    try {
+      chrome.runtime.sendMessage(
+        { type: 'API_REQUEST', endpoint: `/api/timing?timezone=${encodeURIComponent(tz)}`, method: 'GET' },
+        (response) => {
+          if (chrome.runtime.lastError) return;
+          if (response?.ok && response.data?.success) {
+            setMessage(response.data.data.message);
+            setStatus(response.data.data.currentStatus);
+          }
+        }
+      );
+    } catch {
+      // Extension context may be invalid
+    }
+  }, []);
+
+  if (!message) return null;
+
+  const statusClass = status === 'good_now'
+    ? 'reachos-timing-good'
+    : status === 'better_later'
+      ? 'reachos-timing-later'
+      : 'reachos-timing-off';
+
+  return (
+    <div className={`reachos-timing-indicator ${statusClass}`}>
+      <span className="reachos-timing-icon">
+        {status === 'good_now' ? '\u2705' : '\u23F0'}
+      </span>
+      <span className="reachos-timing-text">{message}</span>
     </div>
   );
 }
@@ -464,6 +507,29 @@ function AISlopBadge({ aiSlopScore, isServerPending, isServerEnhanced }: AISlopB
 }
 
 // ---------------------------------------------------------------------------
+// TrendingBadge — shows when tweet aligns with a trending topic
+// ---------------------------------------------------------------------------
+function TrendingBadge({ alignment }: { alignment?: TrendingAlignment | null }) {
+  if (!alignment || !alignment.isAligned || alignment.matchedTrends.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="reachos-trending-section">
+      {alignment.matchedTrends.map((trend) => (
+        <div key={trend.keyword} className="reachos-trending-badge">
+          <span className="reachos-trending-icon">{'\uD83D\uDD25'}</span>
+          <span className="reachos-trending-text">
+            Trending: {trend.name}
+          </span>
+          <span className="reachos-trending-bonus">+{alignment.bonusPoints}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // ScoreOverlay (main export)
 // ---------------------------------------------------------------------------
 interface ScoreOverlayProps {
@@ -533,6 +599,8 @@ export function ScoreOverlay({ analysis, isServerPending, serverError, currentTe
         ) : (
           <>
             <ScoreCircle score={analysis.reachScore} tier={analysis.tier} />
+            <TrendingBadge alignment={analysis.trendingAlignment} />
+            <TimingIndicator />
             <BreakdownBars breakdown={analysis.breakdown} />
             <SuggestionList suggestions={analysis.suggestions} />
             <ReplyCoachBanner />

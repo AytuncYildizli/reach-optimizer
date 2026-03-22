@@ -2,6 +2,7 @@ import { prisma } from '@lib/db';
 import { CopyButton } from './CopyButton';
 import { TweetRow } from './TweetRow';
 import { analyzeRulePerformance } from '@lib/weight-learner';
+import { generateCalibrationReport, type CalibrationReport } from '@lib/calibration';
 import pg from 'pg';
 
 export const metadata = {
@@ -150,6 +151,14 @@ export default async function DashboardPage() {
   let rulePerformance: Awaited<ReturnType<typeof analyzeRulePerformance>> = [];
   try {
     rulePerformance = await analyzeRulePerformance();
+  } catch {
+    // Non-critical, skip if fails
+  }
+
+  // Calibration data
+  let calibration: CalibrationReport | null = null;
+  try {
+    calibration = await generateCalibrationReport();
   } catch {
     // Non-critical, skip if fails
   }
@@ -433,6 +442,256 @@ export default async function DashboardPage() {
           )}
         </section>
 
+        {/* Score Calibration */}
+        <section style={styles.section}>
+          <h2 style={styles.sectionTitle}>Score Calibration</h2>
+          <p style={{ color: colors.textSecondary, margin: '0 0 16px 0', fontSize: 14 }}>
+            {calibration?.status === 'ready'
+              ? 'How well our predicted scores match real-world tweet performance.'
+              : 'Need more tweets with engagement data to calibrate scoring accuracy.'}
+          </p>
+
+          {calibration?.status === 'ready' && calibration.correlation ? (
+            <>
+              {/* Calibration Stats */}
+              <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 16, marginBottom: 20 }}>
+                <div style={styles.statCard}>
+                  <span style={{ color: colors.textSecondary, fontSize: 13 }}>Correlation (r)</span>
+                  <span style={{
+                    color: Math.abs(calibration.correlation.pearson) >= 0.5 ? colors.green
+                      : Math.abs(calibration.correlation.pearson) >= 0.3 ? colors.yellow
+                      : colors.red,
+                    fontSize: 28, fontWeight: 700, lineHeight: 1.2,
+                  }}>
+                    {calibration.correlation.pearson.toFixed(3)}
+                  </span>
+                </div>
+                <div style={styles.statCard}>
+                  <span style={{ color: colors.textSecondary, fontSize: 13 }}>Avg Predicted</span>
+                  <span style={{ color: colors.blue, fontSize: 28, fontWeight: 700, lineHeight: 1.2 }}>
+                    {calibration.correlation.meanPredicted}
+                  </span>
+                </div>
+                <div style={styles.statCard}>
+                  <span style={{ color: colors.textSecondary, fontSize: 13 }}>Avg Actual</span>
+                  <span style={{ color: colors.green, fontSize: 28, fontWeight: 700, lineHeight: 1.2 }}>
+                    {calibration.correlation.meanOutcome}
+                  </span>
+                </div>
+                <div style={styles.statCard}>
+                  <span style={{ color: colors.textSecondary, fontSize: 13 }}>Bias</span>
+                  <span style={{
+                    color: Math.abs(calibration.correlation.bias) <= 5 ? colors.green
+                      : Math.abs(calibration.correlation.bias) <= 15 ? colors.yellow
+                      : colors.red,
+                    fontSize: 28, fontWeight: 700, lineHeight: 1.2,
+                  }}>
+                    {calibration.correlation.bias > 0 ? '+' : ''}{calibration.correlation.bias}
+                  </span>
+                </div>
+              </div>
+
+              {/* Interpretation */}
+              <div style={{
+                backgroundColor: colors.card,
+                border: `1px solid ${colors.border}`,
+                borderRadius: 8,
+                padding: '12px 16px',
+                marginBottom: 16,
+              }}>
+                <span style={{ color: colors.textSecondary, fontSize: 13 }}>
+                  {calibration.correlation.interpretation}
+                </span>
+                <span style={{ color: colors.textSecondary, fontSize: 13, display: 'block', marginTop: 4 }}>
+                  Bias: {calibration.correlation.biasLabel} ({calibration.dataPointCount} data points from {calibration.dataSources.trackedTweets} tracked + {calibration.dataSources.opsTweets} ops tweets)
+                </span>
+              </div>
+
+              {/* Delta distribution heatmap */}
+              <div style={{
+                backgroundColor: colors.card,
+                border: `1px solid ${colors.border}`,
+                borderRadius: 8,
+                padding: '16px',
+                marginBottom: 16,
+              }}>
+                <h3 style={{ fontSize: 14, fontWeight: 600, color: colors.textPrimary, margin: '0 0 12px 0' }}>
+                  Predicted vs Actual Score Distribution
+                </h3>
+                <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4 }}>
+                  {calibration.dataPoints.slice(0, 40).map((dp, i) => (
+                    <div
+                      key={i}
+                      title={`Predicted: ${dp.predictedScore} | Actual: ${dp.outcomeScore} | Delta: ${dp.delta > 0 ? '+' : ''}${dp.delta}`}
+                      style={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: 4,
+                        backgroundColor: Math.abs(dp.delta) <= 10
+                          ? colors.green + '44'
+                          : Math.abs(dp.delta) <= 20
+                          ? colors.yellow + '44'
+                          : colors.red + '44',
+                        border: `1px solid ${
+                          Math.abs(dp.delta) <= 10 ? colors.green
+                          : Math.abs(dp.delta) <= 20 ? colors.yellow
+                          : colors.red
+                        }66`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 9,
+                        color: colors.textSecondary,
+                        cursor: 'default',
+                      }}
+                    >
+                      {dp.delta > 0 ? '+' : ''}{dp.delta}
+                    </div>
+                  ))}
+                </div>
+                <div style={{ marginTop: 8, display: 'flex', gap: 16, fontSize: 11, color: colors.textSecondary }}>
+                  <span>
+                    <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, backgroundColor: colors.green + '44', marginRight: 4, verticalAlign: 'middle' }} />
+                    Within 10
+                  </span>
+                  <span>
+                    <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, backgroundColor: colors.yellow + '44', marginRight: 4, verticalAlign: 'middle' }} />
+                    Within 20
+                  </span>
+                  <span>
+                    <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, backgroundColor: colors.red + '44', marginRight: 4, verticalAlign: 'middle' }} />
+                    Off by 20+
+                  </span>
+                </div>
+              </div>
+
+              {/* Top Predictive Rules */}
+              {calibration.topPredictiveRules.length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 600, color: colors.green, margin: '0 0 10px 0' }}>
+                    Top Predictive Rules (High Lift)
+                  </h3>
+                  <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
+                    {calibration.topPredictiveRules.map((rule) => (
+                      <div
+                        key={rule.ruleId}
+                        style={{
+                          backgroundColor: colors.card,
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: 8,
+                          padding: '10px 16px',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <div>
+                          <span style={{ color: colors.textPrimary, fontSize: 14 }}>
+                            {rule.ruleName}
+                          </span>
+                          <span style={{ color: colors.textSecondary, fontSize: 12, marginLeft: 8 }}>
+                            ({rule.category})
+                          </span>
+                        </div>
+                        <span style={{ color: colors.green, fontSize: 14, fontWeight: 600 }}>
+                          +{rule.lift} lift ({rule.timesTriggered}x)
+                          {rule.pValue !== null && rule.pValue < 0.05 ? ' *' : ''}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Top Noise Rules */}
+              {calibration.topNoiseRules.length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 600, color: colors.textSecondary, margin: '0 0 10px 0' }}>
+                    Noise Rules (No Real Impact)
+                  </h3>
+                  <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
+                    {calibration.topNoiseRules.map((rule) => (
+                      <div
+                        key={rule.ruleId}
+                        style={{
+                          backgroundColor: colors.card,
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: 8,
+                          padding: '10px 16px',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          opacity: 0.7,
+                        }}
+                      >
+                        <span style={{ color: colors.textPrimary, fontSize: 14 }}>
+                          {rule.ruleName}
+                        </span>
+                        <span style={{ color: colors.textSecondary, fontSize: 14 }}>
+                          {rule.lift > 0 ? '+' : ''}{rule.lift} lift ({rule.timesTriggered}x)
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Top Harmful Rules */}
+              {calibration.topHarmfulRules.length > 0 && (
+                <div>
+                  <h3 style={{ fontSize: 15, fontWeight: 600, color: colors.red, margin: '0 0 10px 0' }}>
+                    Harmful Rules (Negative Lift)
+                  </h3>
+                  <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
+                    {calibration.topHarmfulRules.map((rule) => (
+                      <div
+                        key={rule.ruleId}
+                        style={{
+                          backgroundColor: colors.card,
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: 8,
+                          padding: '10px 16px',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <div>
+                          <span style={{ color: colors.textPrimary, fontSize: 14 }}>
+                            {rule.ruleName}
+                          </span>
+                          <span style={{ color: colors.textSecondary, fontSize: 12, marginLeft: 8 }}>
+                            ({rule.category})
+                          </span>
+                        </div>
+                        <span style={{ color: colors.red, fontSize: 14, fontWeight: 600 }}>
+                          {rule.lift} lift ({rule.timesTriggered}x)
+                          {rule.pValue !== null && rule.pValue < 0.05 ? ' *' : ''}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={styles.emptyState}>
+              <p style={{ color: colors.textSecondary, margin: 0 }}>
+                {calibration?.message || 'Need at least 10 tweets with engagement metrics to generate calibration report.'}
+              </p>
+            </div>
+          )}
+        </section>
+
+        {/* Optimal Posting Times — Weekly Heatmap */}
+        <section style={styles.section}>
+          <h2 style={styles.sectionTitle}>Optimal Posting Times</h2>
+          <p style={{ color: colors.textSecondary, margin: '0 0 16px 0', fontSize: 14 }}>
+            Research-based best windows to maximize reach (UTC). Your extension adjusts for your timezone.
+          </p>
+          <TimingHeatmap />
+        </section>
+
         {/* Daily Suggestions */}
         <section style={styles.section}>
           <h2 style={styles.sectionTitle}>Daily Tweet Ideas</h2>
@@ -533,6 +792,137 @@ function MetricPill({
       <span style={{ fontSize: 13 }}>{icon}</span>
       <span>{formatNumber(value)}</span>
     </span>
+  );
+}
+
+// -- Timing Heatmap (static research data rendered at UTC) --
+
+const TIMING_HEATMAP_UTC: number[][] = (() => {
+  const grid: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
+  const windows: Array<{ day: number; hour: number; intensity: number }> = [
+    // Tuesday peak
+    { day: 2, hour: 9, intensity: 100 },
+    { day: 2, hour: 10, intensity: 70 },
+    { day: 2, hour: 11, intensity: 70 },
+    // Wednesday
+    { day: 3, hour: 9, intensity: 100 },
+    { day: 3, hour: 10, intensity: 100 },
+    { day: 3, hour: 11, intensity: 70 },
+    { day: 3, hour: 12, intensity: 70 },
+    { day: 3, hour: 13, intensity: 40 },
+    // Thursday
+    { day: 4, hour: 9, intensity: 100 },
+    { day: 4, hour: 10, intensity: 100 },
+    { day: 4, hour: 11, intensity: 70 },
+    { day: 4, hour: 12, intensity: 70 },
+    { day: 4, hour: 13, intensity: 40 },
+    // Friday
+    { day: 5, hour: 9, intensity: 100 },
+    { day: 5, hour: 10, intensity: 70 },
+    { day: 5, hour: 11, intensity: 70 },
+    { day: 5, hour: 12, intensity: 40 },
+    { day: 5, hour: 13, intensity: 40 },
+    // Monday (lighter)
+    { day: 1, hour: 9, intensity: 40 },
+    { day: 1, hour: 10, intensity: 40 },
+    { day: 1, hour: 13, intensity: 40 },
+  ];
+  for (const w of windows) {
+    grid[w.day][w.hour] = w.intensity;
+  }
+  return grid;
+})();
+
+const HEATMAP_DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const HEATMAP_DISPLAY_HOURS = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+
+function heatColor(intensity: number): string {
+  if (intensity >= 80) return colors.green;
+  if (intensity >= 50) return colors.green + '88';
+  if (intensity >= 20) return colors.green + '44';
+  return 'transparent';
+}
+
+function TimingHeatmap() {
+  return (
+    <div style={{ overflowX: 'auto' as const }}>
+      <table style={{ borderCollapse: 'collapse' as const, width: '100%', fontSize: 12 }}>
+        <thead>
+          <tr>
+            <th style={{ padding: '4px 8px', color: colors.textSecondary, textAlign: 'left' as const, fontSize: 11 }}></th>
+            {HEATMAP_DISPLAY_HOURS.map((h) => (
+              <th key={h} style={{
+                padding: '4px 2px',
+                color: colors.textSecondary,
+                fontSize: 10,
+                fontWeight: 500,
+                textAlign: 'center' as const,
+                minWidth: 32,
+              }}>
+                {h < 12 ? `${h}a` : h === 12 ? '12p' : `${h - 12}p`}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {HEATMAP_DAY_LABELS.map((dayLabel, dayIdx) => (
+            <tr key={dayIdx}>
+              <td style={{
+                padding: '4px 8px',
+                color: colors.textSecondary,
+                fontSize: 11,
+                fontWeight: 600,
+                whiteSpace: 'nowrap' as const,
+              }}>
+                {dayLabel}
+              </td>
+              {HEATMAP_DISPLAY_HOURS.map((h) => {
+                const intensity = TIMING_HEATMAP_UTC[dayIdx][h];
+                return (
+                  <td key={h} style={{ padding: '2px' }}>
+                    <div
+                      style={{
+                        width: '100%',
+                        height: 20,
+                        borderRadius: 3,
+                        backgroundColor: intensity > 0 ? heatColor(intensity) : `${colors.border}66`,
+                        border: intensity >= 80 ? `1px solid ${colors.green}88` : '1px solid transparent',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                      title={`${dayLabel} ${h < 12 ? h + 'AM' : h === 12 ? '12PM' : (h - 12) + 'PM'} UTC — ${intensity >= 80 ? 'Peak' : intensity >= 50 ? 'Good' : intensity > 0 ? 'Okay' : 'Off-peak'}`}
+                    >
+                      {intensity >= 80 && (
+                        <span style={{ fontSize: 8, color: '#fff', fontWeight: 700 }}>P</span>
+                      )}
+                    </div>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={{ display: 'flex', gap: 16, marginTop: 12, fontSize: 11, color: colors.textSecondary }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 12, height: 12, borderRadius: 2, backgroundColor: colors.green, display: 'inline-block' }} />
+          Peak
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 12, height: 12, borderRadius: 2, backgroundColor: colors.green + '88', display: 'inline-block' }} />
+          Good
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 12, height: 12, borderRadius: 2, backgroundColor: colors.green + '44', display: 'inline-block' }} />
+          Okay
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 12, height: 12, borderRadius: 2, backgroundColor: `${colors.border}66`, display: 'inline-block' }} />
+          Off-peak
+        </span>
+      </div>
+    </div>
   );
 }
 
