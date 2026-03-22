@@ -46,18 +46,31 @@ function RewriteSection({ text, isServerPending, originalScore }: { text: string
 
   const handleRewrite = () => {
     setLoading(true);
-    chrome.runtime.sendMessage(
-      { type: 'API_REQUEST', endpoint: '/api/suggest', method: 'POST', body: { content: text, type: 'hook' } },
-      (response) => {
-        setLoading(false);
-        if (response?.ok && response.data?.success && response.data.suggestions?.length > 0) {
-          const results = response.data.suggestions
-            .map((s: string) => scoreRewrite(s, text, originalScore))
-            .sort((a: ScoredSuggestion, b: ScoredSuggestion) => b.score - a.score);
-          setScored(results);
+    // Timeout fallback — if no response in 15s, reset loading
+    const timeout = setTimeout(() => setLoading(false), 15000);
+    try {
+      chrome.runtime.sendMessage(
+        { type: 'API_REQUEST', endpoint: '/api/suggest', method: 'POST', body: { content: text, type: 'hook' } },
+        (response) => {
+          clearTimeout(timeout);
+          setLoading(false);
+          if (chrome.runtime.lastError) {
+            console.error('[ReachOS] sendMessage error:', chrome.runtime.lastError);
+            return;
+          }
+          if (response?.ok && response.data?.success && response.data.suggestions?.length > 0) {
+            const results = response.data.suggestions
+              .map((s: string) => scoreRewrite(s, text, originalScore))
+              .sort((a: ScoredSuggestion, b: ScoredSuggestion) => b.score - a.score);
+            setScored(results);
+          }
         }
-      }
-    );
+      );
+    } catch (err) {
+      clearTimeout(timeout);
+      setLoading(false);
+      console.error('[ReachOS] Failed to send rewrite request:', err);
+    }
   };
 
   if (scored.length > 0) {
@@ -156,16 +169,24 @@ function SelfReplyGenerator({ text }: { text: string }) {
 
   const handleGenerate = () => {
     setLoading(true);
-    chrome.runtime.sendMessage(
-      { type: 'API_REQUEST', endpoint: '/api/suggest', method: 'POST',
-        body: { content: text, type: 'self-reply' } },
-      (response) => {
-        setLoading(false);
-        if (response?.ok && response.data?.success && response.data.suggestions?.length > 0) {
-          setSelfReply(response.data.suggestions[0]);
+    const timeout = setTimeout(() => setLoading(false), 15000);
+    try {
+      chrome.runtime.sendMessage(
+        { type: 'API_REQUEST', endpoint: '/api/suggest', method: 'POST',
+          body: { content: text, type: 'self-reply' } },
+        (response) => {
+          clearTimeout(timeout);
+          setLoading(false);
+          if (chrome.runtime.lastError) return;
+          if (response?.ok && response.data?.success && response.data.suggestions?.length > 0) {
+            setSelfReply(response.data.suggestions[0]);
+          }
         }
-      }
-    );
+      );
+    } catch {
+      clearTimeout(timeout);
+      setLoading(false);
+    }
   };
 
   // Reset when text changes
