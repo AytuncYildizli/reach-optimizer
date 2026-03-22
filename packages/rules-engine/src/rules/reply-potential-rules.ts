@@ -188,9 +188,9 @@ export const mediaPresenceRule: RuleDefinition = {
       return {
         ruleId: 'bonus-media-present',
         triggered: true,
-        points: 0,
-        severity: 'warning',
-        suggestion: 'No image or video. Adding media boosts reach by 150-1000%. Consider a screenshot, chart, or short video.',
+        points: -3,
+        severity: 'critical',
+        suggestion: 'ADD AN IMAGE OR VIDEO! Media gets 2-10x more reach. Screenshot, chart, meme, or short clip.',
       };
     }
     return { ruleId: 'bonus-media-present', triggered: false, points: 0, severity: 'info' };
