@@ -1,0 +1,34 @@
+ReachOS — Real-time Reach Score for every tweet you write.
+
+Know your reach potential before you hit post. ReachOS analyzes your tweet against 29 algorithm-research-backed rules and gives you a 0-100 Reach Score in real time.
+
+--- FEATURES ---
+
+Score Overlay: A live 0-100 score appears right on X.com as you type. See breakdowns for Hook, Structure, Engagement, Penalties, and Bonuses.
+
+AI Auto-Optimize: One click runs 5 rounds of iterative AI rewriting to find the highest-reach version of your tweet. Copy the best variation instantly.
+
+Actionable Suggestions: Get specific, prioritized suggestions — fix weak hooks, improve structure, remove penalty-triggering patterns.
+
+AI Slop Detection: Flags AI-sounding language patterns so your tweets stay authentic. Algorithms penalize robotic content — we help you avoid it.
+
+Reply Coach: Get notified about unanswered replies on your tweets. Replying to engaged followers gives a 150x algorithm distribution boost.
+
+Self-Reply Strategy: Generate a self-reply to kickstart conversations and boost engagement on your own tweet.
+
+Trending Alignment: Automatically detects when your tweet aligns with currently trending topics for bonus reach.
+
+Posting Time Optimization: Know whether now is a good time to post based on your timezone and peak engagement windows.
+
+--- HOW IT WORKS ---
+
+1. Open X.com (Twitter) and start composing a tweet
+2. ReachOS instantly scores your content and shows suggestions
+3. Follow the suggestions or use AI auto-optimize for maximum reach
+4. Post with confidence knowing your reach potential
+
+--- BACKED BY RESEARCH ---
+
+29 rules, 106 tests. Every scoring rule is derived from algorithm signal research — not guesswork. Rules cover hook strength, structure patterns, engagement triggers, penalty avoidance, and bonus signals.
+
+Free tier: 3 AI-enhanced analyses per month. Local scoring is always unlimited and instant.

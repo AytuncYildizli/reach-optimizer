@@ -340,7 +340,7 @@ function ScoreCircle({ score, tier }: { score: number; tier: ScoreTier }) {
         <div className="reachos-score-circle-fill" style={gradientStyle} />
         <div className="reachos-score-circle-inner">
           <AnimatedScore value={score} tier={tier} />
-          <div className="reachos-score-label">REACH SCORE</div>
+          <div className="reachos-score-label">{t('reachScore')}</div>
         </div>
       </div>
       <div className={`reachos-tier-label color-${tier}`}>
@@ -355,6 +355,7 @@ function ScoreCircle({ score, tier }: { score: number; tier: ScoreTier }) {
 // ---------------------------------------------------------------------------
 interface BreakdownEntry {
   label: string;
+  key: string;
   value: number;
   max: number;
   color: string;
@@ -375,15 +376,15 @@ function buildBreakdownEntries(breakdown: ScoreBreakdown): BreakdownEntry[] {
   const bonusPct = (breakdown.bonuses / 20) * 100;
 
   return [
-    { label: "Hook", value: breakdown.hook, max: 25, color: getBarColor(hookPct) },
-    { label: "Structure", value: breakdown.structure, max: 20, color: getBarColor(structPct) },
-    { label: "Engagement", value: breakdown.engagement, max: 20, color: getBarColor(engPct) },
-    { label: "Penalties", value: breakdown.penalties, max: 30, color: "#f4212e" },
-    { label: "Bonuses", value: breakdown.bonuses, max: 20, color: "#00ba7c" },
+    { label: t('hook'), key: "hook", value: breakdown.hook, max: 25, color: getBarColor(hookPct) },
+    { label: t('structure'), key: "structure", value: breakdown.structure, max: 20, color: getBarColor(structPct) },
+    { label: t('engagement'), key: "engagement", value: breakdown.engagement, max: 20, color: getBarColor(engPct) },
+    { label: t('penalties'), key: "penalties", value: breakdown.penalties, max: 30, color: "#f4212e" },
+    { label: t('bonuses'), key: "bonuses", value: breakdown.bonuses, max: 20, color: "#00ba7c" },
   ].map((entry) => ({
     ...entry,
     // For penalties, use abs for the bar width percentage
-    ...(entry.label === "Penalties"
+    ...(entry.key === "penalties"
       ? { value: breakdown.penalties }
       : {}),
   }));
@@ -394,18 +395,16 @@ function BreakdownBars({ breakdown }: { breakdown: ScoreBreakdown }) {
 
   return (
     <>
-      <div className="reachos-section-label">Breakdown</div>
+      <div className="reachos-section-label">{t('breakdown')}</div>
       <div className="reachos-breakdown">
         {entries.map((entry) => {
-          const displayValue = entry.label === "Penalties"
-            ? entry.value
-            : entry.value;
-          const barWidth = entry.label === "Penalties"
+          const displayValue = entry.value;
+          const barWidth = entry.key === "penalties"
             ? (Math.abs(entry.value) / entry.max) * 100
             : (entry.value / entry.max) * 100;
 
           return (
-            <div key={entry.label} className="reachos-breakdown-item">
+            <div key={entry.key} className="reachos-breakdown-item">
               <span className="reachos-breakdown-label">{entry.label}</span>
               <div className="reachos-breakdown-bar-bg">
                 <div
@@ -420,7 +419,7 @@ function BreakdownBars({ breakdown }: { breakdown: ScoreBreakdown }) {
                 className="reachos-breakdown-value"
                 style={{ color: entry.color }}
               >
-                {displayValue > 0 && entry.label !== "Penalties" ? `+${displayValue}` : displayValue}
+                {displayValue > 0 && entry.key !== "penalties" ? `+${displayValue}` : displayValue}
               </span>
             </div>
           );
@@ -436,7 +435,7 @@ function BreakdownBars({ breakdown }: { breakdown: ScoreBreakdown }) {
 function SuggestionList({ suggestions }: { suggestions: Suggestion[] }) {
   if (suggestions.length === 0) {
     return (
-      <div className="reachos-no-suggestions">No issues found - looking good!</div>
+      <div className="reachos-no-suggestions">{t('noIssues')}</div>
     );
   }
 
@@ -446,8 +445,8 @@ function SuggestionList({ suggestions }: { suggestions: Suggestion[] }) {
 
   return (
     <>
-      <div className="reachos-section-label">Suggestions</div>
-      <div className="reachos-suggestion-count">{suggestions.length} suggestion{suggestions.length !== 1 ? "s" : ""}</div>
+      <div className="reachos-section-label">{t('suggestions')}</div>
+      <div className="reachos-suggestion-count">{suggestions.length} {suggestions.length !== 1 ? t('suggestions_plural') : t('suggestion')}</div>
       <div className="reachos-suggestions">
         {sorted.map((s) => (
           <div key={s.ruleId} className={`reachos-suggestion ${s.severity}`}>
@@ -487,9 +486,9 @@ function AISlopBadge({ aiSlopScore, isServerPending, isServerEnhanced }: AISlopB
     text = `${t('aiCheck')}: ${aiSlopScore}/100 \u2014 ${verdict.label}`;
   } else if (isServerPending) {
     badgeClass += " reachos-pending";
-    text = "AI Check: Analyzing...";
+    text = `${t('aiCheck')}: Analyzing...`;
   } else {
-    text = "AI Check: Type more to analyze";
+    text = `${t('aiCheck')}: ${t('typeMore')}`;
   }
 
   return (
@@ -500,7 +499,7 @@ function AISlopBadge({ aiSlopScore, isServerPending, isServerEnhanced }: AISlopB
       {isServerEnhanced && (
         <div className="reachos-server-badge">
           <div className="reachos-server-badge-dot" />
-          AI Enhanced
+          {t('aiEnhanced')}
         </div>
       )}
     </div>
@@ -589,13 +588,13 @@ export function ScoreOverlay({ analysis, isServerPending, serverError, currentTe
 
         {serverError && (
           <div className="reachos-error">
-            Server unavailable - showing local analysis only
+            {t('serverUnavailable')}
           </div>
         )}
 
         {analysis === null ? (
           <div className="reachos-idle">
-            Start typing in the tweet composer...
+            {t('startTyping')}
           </div>
         ) : (
           <>

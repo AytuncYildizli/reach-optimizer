@@ -83,12 +83,12 @@ describe('ScoreEngine with all client rules', () => {
 
   it('returns zero critical suggestions for a well-crafted tweet', () => {
     const text =
-      "I made $300k in 6 months doing this one thing differently. What's your experience?";
+      "I spent 6 months rebuilding our deploy pipeline from scratch. Here are 5 lessons I learned. What would you add?";
     const result = engine.evaluate({
       text,
       platform: 'x',
       isThread: false,
-      hasMedia: false,
+      hasMedia: true,
     });
     const criticals = result.suggestions.filter(
       (s) => s.severity === 'critical',
