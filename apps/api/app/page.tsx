@@ -39,7 +39,7 @@ export default function LandingPage() {
           </span>
         </div>
         <a
-          href="https://chromewebstore.google.com"
+          href="https://chromewebstore.google.com/detail/reachos-content-reach-opt/ligaanjkjpgaieabfmbeecehhhfoiecf"
           target="_blank"
           rel="noopener noreferrer"
           style={{
@@ -94,7 +94,7 @@ export default function LandingPage() {
         </p>
         <div style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
           <a
-            href="https://chromewebstore.google.com"
+            href="https://chromewebstore.google.com/detail/reachos-content-reach-opt/ligaanjkjpgaieabfmbeecehhhfoiecf"
             target="_blank"
             rel="noopener noreferrer"
             style={{
@@ -380,7 +380,7 @@ export default function LandingPage() {
           3 free analyses per month. No credit card required.
         </p>
         <a
-          href="https://chromewebstore.google.com"
+          href="https://chromewebstore.google.com/detail/reachos-content-reach-opt/ligaanjkjpgaieabfmbeecehhhfoiecf"
           target="_blank"
           rel="noopener noreferrer"
           style={{
