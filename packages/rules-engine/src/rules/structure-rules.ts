@@ -38,12 +38,15 @@ export const characterLengthRule: RuleDefinition = {
     }
 
     if (len > 280 && !input.isThread) {
+      // Media tweets get lighter penalty — video/image context justifies length
       return {
         ruleId: 'structure-char-length',
         triggered: true,
-        points: -4,
-        severity: 'warning',
-        suggestion: 'Text wall — consider breaking into a thread',
+        points: input.hasMedia ? -1 : -4,
+        severity: input.hasMedia ? 'info' : 'warning',
+        suggestion: input.hasMedia
+          ? 'Long text with media — generally fine'
+          : 'Text wall — consider breaking into a thread',
       };
     }
 

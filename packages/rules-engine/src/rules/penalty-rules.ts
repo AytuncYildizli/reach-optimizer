@@ -58,8 +58,14 @@ export const textWallRule: RuleDefinition = {
     const text = input.text;
     const isLong = text.length > 280;
     const isThread = input.isThread;
-    const hasLineBreaks = text.includes('\n');
+    const hasLineBreaks = text.includes('\n') || text.includes('\r');
 
+    // Media tweets get a pass on length — video/image context justifies longer text
+    if (input.hasMedia) {
+      return { ruleId: 'penalty-text-wall', triggered: false, points: 0, severity: 'info' };
+    }
+
+    // Has line breaks = structured, not a wall
     if (isLong && !isThread && !hasLineBreaks) {
       return {
         ruleId: 'penalty-text-wall',
@@ -70,11 +76,6 @@ export const textWallRule: RuleDefinition = {
       };
     }
 
-    return {
-      ruleId: 'penalty-text-wall',
-      triggered: false,
-      points: 0,
-      severity: 'info',
-    };
+    return { ruleId: 'penalty-text-wall', triggered: false, points: 0, severity: 'info' };
   },
 };

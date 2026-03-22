@@ -90,7 +90,8 @@ export class ComposerDetector {
 
     this.debounceTimer = setTimeout(() => {
       if (!this.currentComposer) return;
-      const text = (this.currentComposer.textContent ?? '').trim();
+      // Use innerText to preserve line breaks (textContent strips them)
+      const text = (this.currentComposer.innerText ?? '').trim();
       this.onTextChange(this.currentComposer, text);
     }, 300);
   }

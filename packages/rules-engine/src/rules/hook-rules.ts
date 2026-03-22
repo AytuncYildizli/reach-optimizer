@@ -68,10 +68,11 @@ export const hookLengthRule: RuleDefinition = {
       };
     }
 
+    // Long hook is less of an issue with media (video provides context)
     return {
       ruleId: 'hook-length-check',
       triggered: true,
-      points: -3,
+      points: input.hasMedia ? -1 : -3,
       severity: 'warning',
       suggestion: 'Hook too long — trim to under 100 characters',
     };
