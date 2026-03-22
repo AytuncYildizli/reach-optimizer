@@ -15,14 +15,9 @@ interface ScoredSuggestion {
   delta: number; // score difference vs original
 }
 
-function scoreRewrite(rewriteText: string, originalText: string, originalScore: number): ScoredSuggestion {
-  // Rewrite is a hook replacement — combine with original body for fair scoring
-  // Extract body: everything after first sentence/line break of original
-  const bodyMatch = originalText.match(/[.!?\n](.+)/s);
-  const body = bodyMatch ? bodyMatch[1].trim() : '';
-  const fullText = body ? `${rewriteText} ${body}` : rewriteText;
-
-  const result = rewriteScorer.evaluate({ text: fullText, platform: 'x', isThread: false, hasMedia: false });
+function scoreRewrite(rewriteText: string, _originalText: string, originalScore: number): ScoredSuggestion {
+  // Rewrites are now full tweets (not just hooks), score directly
+  const result = rewriteScorer.evaluate({ text: rewriteText, platform: 'x', isThread: false, hasMedia: false });
   return {
     text: rewriteText,
     score: result.reachScore,
