@@ -40,4 +40,5 @@ export {
   deadEndingRule,
   combativeToneRule,
   specificNumberRule,
+  mediaPresenceRule,
 } from './rules/reply-potential-rules';

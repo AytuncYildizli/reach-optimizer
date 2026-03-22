@@ -3,8 +3,8 @@ import { ScoreEngine } from '../engine';
 import { allClientRules } from '../all-client-rules';
 
 describe('allClientRules registry', () => {
-  it('contains 27 rules', () => {
-    expect(allClientRules).toHaveLength(27);
+  it('contains 28 rules', () => {
+    expect(allClientRules).toHaveLength(28);
   });
 
   it('every rule has required fields', () => {

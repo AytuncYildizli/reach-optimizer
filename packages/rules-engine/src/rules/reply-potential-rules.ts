@@ -174,3 +174,32 @@ export const specificNumberRule: RuleDefinition = {
     };
   },
 };
+
+export const mediaPresenceRule: RuleDefinition = {
+  id: 'bonus-media-present',
+  name: 'Media Presence',
+  category: 'bonus',
+  runOn: 'client',
+  evaluate: (input: TweetInput): RuleResult => {
+    if (input.hasMedia) {
+      return {
+        ruleId: 'bonus-media-present',
+        triggered: true,
+        points: 5,
+        severity: 'positive',
+        suggestion: 'Media attached — images/videos get 2-10x more distribution.',
+      };
+    }
+    // Only suggest adding media if tweet is long enough to be real content
+    if (input.text.length > 50) {
+      return {
+        ruleId: 'bonus-media-present',
+        triggered: true,
+        points: 0,
+        severity: 'warning',
+        suggestion: 'No image or video. Adding media boosts reach by 150-1000%. Consider a screenshot, chart, or short video.',
+      };
+    }
+    return { ruleId: 'bonus-media-present', triggered: false, points: 0, severity: 'info' };
+  },
+};

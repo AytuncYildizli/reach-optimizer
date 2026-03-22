@@ -37,6 +37,7 @@ import {
   deadEndingRule,
   combativeToneRule,
   specificNumberRule,
+  mediaPresenceRule,
 } from './rules/reply-potential-rules';
 
 export const allClientRules: RuleDefinition[] = [
@@ -73,4 +74,5 @@ export const allClientRules: RuleDefinition[] = [
   combativeToneRule,
   // Bonus rules
   specificNumberRule,
+  mediaPresenceRule,
 ];
