@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@lib/db';
 import { env } from '@lib/env';
+import { calculateOutcomeScore } from '@lib/outcome-scorer';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -23,6 +24,7 @@ export async function GET() {
     select: {
       id: true,
       xTweetId: true,
+      reachScore: true,
     },
   });
 
@@ -76,6 +78,26 @@ export async function GET() {
           velocityScore,
         },
       });
+
+      // Calculate and log outcome score for feedback loop
+      const likeCount = metrics.like_count ?? 0;
+      const retweetCount = metrics.retweet_count ?? 0;
+      const replyCount = metrics.reply_count ?? 0;
+      const quoteCount = metrics.quote_count ?? 0;
+      const bookmarkCount = metrics.bookmark_count ?? 0;
+      const impressionCount = metrics.impression_count ?? 0;
+
+      const outcomeScore = calculateOutcomeScore({
+        likes: likeCount,
+        retweets: retweetCount,
+        replies: replyCount,
+        quotes: quoteCount,
+        bookmarks: bookmarkCount,
+        views: impressionCount,
+      });
+      console.log(
+        `[Metrics] Tweet ${tweet.xTweetId}: outcome=${outcomeScore}, predicted=${tweet.reachScore}`,
+      );
 
       updated++;
     } catch (error) {

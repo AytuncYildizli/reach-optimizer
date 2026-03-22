@@ -1,6 +1,7 @@
 import { prisma } from '@lib/db';
 import { CopyButton } from './CopyButton';
 import { TweetRow } from './TweetRow';
+import { analyzeRulePerformance } from '@lib/weight-learner';
 import pg from 'pg';
 
 export const metadata = {
@@ -56,6 +57,13 @@ function formatNumber(n: number): string {
 function truncate(text: string, maxLen: number): string {
   if (text.length <= maxLen) return text;
   return text.slice(0, maxLen).trimEnd() + '...';
+}
+
+function formatRuleId(ruleId: string): string {
+  return ruleId
+    .replace(/^(hook|structure|engagement|penalty|bonus)-/, '')
+    .replace(/-/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 // -- Suggestion templates (static for MVP, no AI call needed) --
@@ -137,6 +145,16 @@ export default async function DashboardPage() {
             totalTweets,
         )
       : 0;
+
+  // Learning Insights data
+  let rulePerformance: Awaited<ReturnType<typeof analyzeRulePerformance>> = [];
+  try {
+    rulePerformance = await analyzeRulePerformance();
+  } catch {
+    // Non-critical, skip if fails
+  }
+  const topPositive = rulePerformance.filter((r) => r.lift > 0).slice(0, 5);
+  const topNegative = rulePerformance.filter((r) => r.lift < 0).slice(0, 5);
 
   const optimizedTweets = tweets.filter((t) => t.optimized);
   const nonOptimized = tweets.filter((t) => !t.optimized);
@@ -313,6 +331,107 @@ export default async function DashboardPage() {
             </div>
           </section>
         )}
+
+        {/* Learning Insights */}
+        <section style={styles.section}>
+          <h2 style={styles.sectionTitle}>Learning Insights</h2>
+          <p style={{ color: colors.textSecondary, margin: '0 0 16px 0', fontSize: 14 }}>
+            {rulePerformance.length > 0
+              ? 'Your scoring is getting smarter with every tweet you post.'
+              : 'Post and track more tweets to unlock personalized scoring insights.'}
+          </p>
+
+          {rulePerformance.length > 0 ? (
+            <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 16, marginBottom: 20 }}>
+              <div style={styles.statCard}>
+                <span style={{ color: colors.textSecondary, fontSize: 13 }}>Rules Analyzed</span>
+                <span style={{ color: colors.blue, fontSize: 28, fontWeight: 700, lineHeight: 1.2 }}>
+                  {rulePerformance.length}
+                </span>
+              </div>
+              <div style={styles.statCard}>
+                <span style={{ color: colors.textSecondary, fontSize: 13 }}>Positive Signals</span>
+                <span style={{ color: colors.green, fontSize: 28, fontWeight: 700, lineHeight: 1.2 }}>
+                  {topPositive.length}
+                </span>
+              </div>
+              <div style={styles.statCard}>
+                <span style={{ color: colors.textSecondary, fontSize: 13 }}>Negative Signals</span>
+                <span style={{ color: colors.red, fontSize: 28, fontWeight: 700, lineHeight: 1.2 }}>
+                  {topNegative.length}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div style={styles.emptyState}>
+              <p style={{ color: colors.textSecondary, margin: 0 }}>
+                Need at least 5 tracked tweets with engagement metrics to start learning.
+              </p>
+            </div>
+          )}
+
+          {topPositive.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 600, color: colors.green, margin: '0 0 10px 0' }}>
+                Top Rules That Boost Performance
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
+                {topPositive.map((rule) => (
+                  <div
+                    key={rule.ruleId}
+                    style={{
+                      backgroundColor: colors.card,
+                      border: `1px solid ${colors.border}`,
+                      borderRadius: 8,
+                      padding: '10px 16px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <span style={{ color: colors.textPrimary, fontSize: 14 }}>
+                      {formatRuleId(rule.ruleId)}
+                    </span>
+                    <span style={{ color: colors.green, fontSize: 14, fontWeight: 600 }}>
+                      +{rule.lift} lift ({rule.timesTriggered} tweets)
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {topNegative.length > 0 && (
+            <div>
+              <h3 style={{ fontSize: 15, fontWeight: 600, color: colors.red, margin: '0 0 10px 0' }}>
+                Rules That Hurt Performance
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
+                {topNegative.map((rule) => (
+                  <div
+                    key={rule.ruleId}
+                    style={{
+                      backgroundColor: colors.card,
+                      border: `1px solid ${colors.border}`,
+                      borderRadius: 8,
+                      padding: '10px 16px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <span style={{ color: colors.textPrimary, fontSize: 14 }}>
+                      {formatRuleId(rule.ruleId)}
+                    </span>
+                    <span style={{ color: colors.red, fontSize: 14, fontWeight: 600 }}>
+                      {rule.lift} lift ({rule.timesTriggered} tweets)
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
 
         {/* Daily Suggestions */}
         <section style={styles.section}>
