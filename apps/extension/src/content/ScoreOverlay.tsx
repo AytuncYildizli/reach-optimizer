@@ -174,6 +174,7 @@ function ReplyCoachBanner() {
 function SelfReplyGenerator({ text }: { text: string }) {
   const [selfReply, setSelfReply] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [copiedReply, setCopiedReply] = useState(false);
 
   const handleGenerate = () => {
     setLoading(true);
@@ -187,7 +188,10 @@ function SelfReplyGenerator({ text }: { text: string }) {
           setLoading(false);
           if (chrome.runtime.lastError) return;
           if (response?.ok && response.data?.success && response.data.suggestions?.length > 0) {
-            setSelfReply(response.data.suggestions[0]);
+            const reply = response.data.suggestions[0];
+            setSelfReply(reply);
+            navigator.clipboard.writeText(reply); // Auto-copy
+            setCopiedReply(true);
           }
         }
       );
@@ -198,7 +202,7 @@ function SelfReplyGenerator({ text }: { text: string }) {
   };
 
   // Reset when text changes
-  useEffect(() => { setSelfReply(null); }, [text]);
+  useEffect(() => { setSelfReply(null); setCopiedReply(false); }, [text]);
 
   if (!text || text.length < 20) return null;
 
@@ -206,12 +210,12 @@ function SelfReplyGenerator({ text }: { text: string }) {
     <div className="reachos-self-reply">
       <div className="reachos-section-label">SELF-REPLY STRATEGY</div>
       {selfReply ? (
-        <div className="reachos-reply-suggestion" onClick={() => navigator.clipboard.writeText(selfReply)}>
-          <div style={{ fontSize: '10px', color: '#71767b', marginBottom: '4px' }}>
-            Post this as a reply to your own tweet immediately after posting:
+        <div className="reachos-reply-suggestion" onClick={() => { navigator.clipboard.writeText(selfReply); setCopiedReply(true); }}>
+          <div style={{ fontSize: '10px', color: '#ffd400', marginBottom: '4px', fontWeight: 600 }}>
+            Copied! Post your tweet first, then paste this as your first reply:
           </div>
-          {selfReply}
-          <span className="reachos-rewrite-copy">Copy</span>
+          <div style={{ fontSize: '12px', lineHeight: 1.4 }}>{selfReply}</div>
+          <span className="reachos-rewrite-copy">{copiedReply ? 'Copied!' : 'Copy again'}</span>
         </div>
       ) : (
         <button className="reachos-rewrite-btn" onClick={handleGenerate} disabled={loading} style={{ background: 'linear-gradient(135deg, #00ba7c, #059669)' }}>
@@ -324,14 +328,14 @@ function buildBreakdownEntries(breakdown: ScoreBreakdown): BreakdownEntry[] {
   const engPct = (breakdown.engagement / 20) * 100;
   const penaltyAbs = Math.abs(breakdown.penalties);
   const penaltyPct = (penaltyAbs / 30) * 100;
-  const bonusPct = (breakdown.bonuses / 15) * 100;
+  const bonusPct = (breakdown.bonuses / 20) * 100;
 
   return [
     { label: "Hook", value: breakdown.hook, max: 25, color: getBarColor(hookPct) },
     { label: "Structure", value: breakdown.structure, max: 20, color: getBarColor(structPct) },
     { label: "Engagement", value: breakdown.engagement, max: 20, color: getBarColor(engPct) },
     { label: "Penalties", value: breakdown.penalties, max: 30, color: "#f4212e" },
-    { label: "Bonuses", value: breakdown.bonuses, max: 15, color: "#00ba7c" },
+    { label: "Bonuses", value: breakdown.bonuses, max: 20, color: "#00ba7c" },
   ].map((entry) => ({
     ...entry,
     // For penalties, use abs for the bar width percentage

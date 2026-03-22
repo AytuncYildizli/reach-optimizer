@@ -119,6 +119,13 @@ export const multiSentenceHookRule: RuleDefinition = {
     const sentences = firstLine.split(/[.!?]\s+/).filter((s) => s.length > 0);
 
     if (sentences.length > 1) {
+      // Don't penalize if first sentence is a short setup (< 60 chars)
+      // or contains a mention (story context)
+      const firstSentence = sentences[0];
+      if (firstSentence && (firstSentence.length < 60 || firstSentence.includes('@'))) {
+        return { ruleId: 'hook-multi-sentence', triggered: false, points: 0, severity: 'info' };
+      }
+
       return {
         ruleId: 'hook-multi-sentence',
         triggered: true,

@@ -156,8 +156,26 @@ function onComposerTextChange(_composerEl: HTMLElement, text: string): void {
     return;
   }
 
-  // 1. Detect media attachments
-  const hasMedia = !!document.querySelector('[data-testid="attachments"], [data-testid="tweetPhoto"], [data-testid="videoComponent"]');
+  // 1. Detect media attachments (expanded selectors for X.com variations)
+  const hasMedia = !!(
+    document.querySelector('[data-testid="attachments"]') ||
+    document.querySelector('[data-testid="tweetPhoto"]') ||
+    document.querySelector('[data-testid="videoComponent"]') ||
+    document.querySelector('[data-testid="tweetButtonInline"] + div img') ||
+    document.querySelector('[data-testid="attachmentsContainer"]') ||
+    document.querySelector('div[data-testid="videoPlayer"]') ||
+    // Check for media preview thumbnails in composer
+    document.querySelector('[role="group"] img[src*="pbs.twimg"]') ||
+    document.querySelector('[role="group"] video') ||
+    // Check if remove media button exists (means media is attached)
+    document.querySelector('[data-testid="removeMedia"]') ||
+    document.querySelector('[aria-label="Remove media"]') ||
+    // Broad check: any image/video inside the compose dialog
+    (() => {
+      const dialog = document.querySelector('[data-testid="tweetTextarea_0"]')?.closest('[role="dialog"]');
+      return dialog && (dialog.querySelector('img[src*="pbs.twimg"]') || dialog.querySelector('video'));
+    })()
+  );
 
   // 2. Run client rules immediately
   const input: TweetInput = {

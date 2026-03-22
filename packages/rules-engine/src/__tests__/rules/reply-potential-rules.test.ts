@@ -78,15 +78,15 @@ describe('directAddressRule', () => {
 });
 
 describe('deadEndingRule', () => {
-  it('triggers on flat ending with no CTA (long tweet)', () => {
+  it('triggers on flat ending with no CTA and no engagement signals (long tweet)', () => {
     const result = deadEndingRule.evaluate({
       ...baseInput,
       text: 'I spent 6 months building a SaaS product and learned a lot about marketing along the way.',
     });
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-3);
+    expect(result.points).toBe(-2);
     expect(result.severity).toBe('warning');
-    expect(result.suggestion).toContain('Tweet ends flat');
+    expect(result.suggestion).toContain('question or open loop');
   });
 
   it('does not trigger on short punchy tweets (<71 chars)', () => {
@@ -111,6 +111,15 @@ describe('deadEndingRule', () => {
     const result = deadEndingRule.evaluate({
       ...baseInput,
       text: 'I spent 6 months building this product and the results were...',
+    });
+    expect(result.triggered).toBe(false);
+    expect(result.points).toBe(0);
+  });
+
+  it('does not trigger when tweet has a question anywhere', () => {
+    const result = deadEndingRule.evaluate({
+      ...baseInput,
+      text: 'Ever wonder why some products grow fast? I spent 6 months building a SaaS and learned the answer.',
     });
     expect(result.triggered).toBe(false);
     expect(result.points).toBe(0);

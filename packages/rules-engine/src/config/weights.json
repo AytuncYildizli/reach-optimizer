@@ -6,7 +6,7 @@
     "structure": { "maxPoints": 15 },
     "engagement": { "maxPoints": 25 },
     "penalty": { "maxPenalty": -40 },
-    "bonus": { "maxBonus": 15 }
+    "bonus": { "maxBonus": 20 }
   },
   "tiers": {
     "critical": { "min": 0, "max": 25, "label": "Don't Post - Rewrite From Scratch" },

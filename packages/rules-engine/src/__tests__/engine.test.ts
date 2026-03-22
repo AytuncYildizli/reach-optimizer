@@ -11,6 +11,23 @@ const baseInput: TweetInput = {
 };
 
 describe('ScoreEngine', () => {
+  it('returns score 0 for empty text', () => {
+    const engine = new ScoreEngine([]);
+    const result = engine.evaluate({ ...baseInput, text: '' });
+
+    expect(result.reachScore).toBe(0);
+    expect(result.tier).toBe('critical');
+    expect(result.suggestions).toHaveLength(0);
+  });
+
+  it('returns score 0 for very short text (< 3 chars)', () => {
+    const engine = new ScoreEngine([]);
+    const result = engine.evaluate({ ...baseInput, text: 'Hi' });
+
+    expect(result.reachScore).toBe(0);
+    expect(result.tier).toBe('critical');
+  });
+
   it('returns base score of 45 with no rules', () => {
     const engine = new ScoreEngine([]);
     const result = engine.evaluate({ ...baseInput, text: 'Hello world' });

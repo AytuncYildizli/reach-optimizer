@@ -72,48 +72,41 @@ export const deadEndingRule: RuleDefinition = {
   runOn: 'client',
   evaluate: (input: TweetInput): RuleResult => {
     const text = input.text;
+    const notTriggered: RuleResult = {
+      ruleId: 'penalty-dead-ending',
+      triggered: false,
+      points: 0,
+      severity: 'info',
+    };
 
     // Short punchy tweets don't need a CTA
-    if (text.length < 71) {
-      return {
-        ruleId: 'penalty-dead-ending',
-        triggered: false,
-        points: 0,
-        severity: 'info',
-      };
-    }
+    if (text.length < 71) return notTriggered;
 
     const trimmed = text.trimEnd();
     const lastChar = trimmed.charAt(trimmed.length - 1);
 
     // Check if ends with question mark, colon, or ellipsis — those are fine
     if (lastChar === '?' || lastChar === ':' || trimmed.endsWith('...')) {
-      return {
-        ruleId: 'penalty-dead-ending',
-        triggered: false,
-        points: 0,
-        severity: 'info',
-      };
+      return notTriggered;
     }
 
     // Check last portion for CTA keywords
     const lastPortion = text.slice(-120);
-    if (CTA_KEYWORDS.test(lastPortion)) {
-      return {
-        ruleId: 'penalty-dead-ending',
-        triggered: false,
-        points: 0,
-        severity: 'info',
-      };
-    }
+    if (CTA_KEYWORDS.test(lastPortion)) return notTriggered;
+
+    // Check if there are ANY engagement signals anywhere in the tweet
+    // (question anywhere, CTA pattern anywhere) — if so, don't penalize
+    const hasQuestionAnywhere = /\?/.test(text);
+    const hasCtaAnywhere = CTA_KEYWORDS.test(text);
+    if (hasQuestionAnywhere || hasCtaAnywhere) return notTriggered;
 
     return {
       ruleId: 'penalty-dead-ending',
       triggered: true,
-      points: -3,
+      points: -2,
       severity: 'warning',
       suggestion:
-        'Tweet ends flat — add a question or open loop to invite replies.',
+        'Consider adding a question or open loop to invite replies.',
     };
   },
 };

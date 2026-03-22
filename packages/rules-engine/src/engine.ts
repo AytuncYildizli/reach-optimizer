@@ -15,6 +15,19 @@ export class ScoreEngine {
   }
 
   evaluate(input: TweetInput): AnalysisResult {
+    // Guard: very short or empty text gets base score with no rules
+    if (!input.text || input.text.trim().length < 3) {
+      return {
+        reachScore: 0,
+        tier: 'critical' as ScoreTier,
+        breakdown: { hook: 0, structure: 0, engagement: 0, penalties: 0, bonuses: 0 },
+        aiSlopScore: null,
+        suggestions: [],
+        highlights: [],
+        isServerEnhanced: false,
+      };
+    }
+
     const results: RuleResult[] = this.rules.map((rule) => rule.evaluate(input));
 
     const breakdown = this.calculateBreakdown(results);

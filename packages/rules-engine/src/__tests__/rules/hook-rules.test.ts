@@ -113,16 +113,37 @@ describe('numberDataHookRule', () => {
 });
 
 describe('multiSentenceHookRule', () => {
-  it('triggers on "This is bad. Really bad."', () => {
+  it('triggers on long multi-sentence hook (first sentence >= 60 chars)', () => {
     const result = multiSentenceHookRule.evaluate({
       ...baseInput,
-      text: 'This is bad. Really bad.\nMore text here',
+      text: 'This is a really long first sentence that definitely exceeds sixty characters total. And then more.',
     });
 
     expect(result.triggered).toBe(true);
     expect(result.points).toBe(-3);
     expect(result.severity).toBe('warning');
     expect(result.suggestion).toContain('multiple sentences');
+  });
+
+  it('does not trigger on short setup sentence (< 60 chars)', () => {
+    const result = multiSentenceHookRule.evaluate({
+      ...baseInput,
+      text: 'This is bad. Really bad.\nMore text here',
+    });
+
+    // "This is bad" is under 60 chars, so this is a valid story-format hook
+    expect(result.triggered).toBe(false);
+    expect(result.points).toBe(0);
+  });
+
+  it('does not trigger on mention-based story hook', () => {
+    const result = multiSentenceHookRule.evaluate({
+      ...baseInput,
+      text: "ran @karpathy's autoresearch on my memory system. thousands of config permutations tested simultaneously.",
+    });
+
+    expect(result.triggered).toBe(false);
+    expect(result.points).toBe(0);
   });
 
   it('does not trigger on a single powerful hook', () => {
