@@ -2,6 +2,7 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   distDir: process.env.VERCEL ? '../../.next' : '.next',
+  serverExternalPackages: ['pg'],
   transpilePackages: [
     '@reach/shared-types',
     '@reach/rules-engine',
