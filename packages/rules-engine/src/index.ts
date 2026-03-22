@@ -41,4 +41,5 @@ export {
   combativeToneRule,
   specificNumberRule,
   mediaPresenceRule,
+  grammarCheckRule,
 } from './rules/reply-potential-rules';

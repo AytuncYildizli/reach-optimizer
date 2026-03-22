@@ -196,3 +196,54 @@ export const mediaPresenceRule: RuleDefinition = {
     return { ruleId: 'bonus-media-present', triggered: false, points: 0, severity: 'info' };
   },
 };
+
+// Common grammar/typo patterns that hurt credibility on X
+const GRAMMAR_PATTERNS: { pattern: RegExp; fix: string; label: string }[] = [
+  { pattern: /\bi (am|was|have|had|will|would|can|could|should|want|need|think|know|like|love|hate|did|do)\b/g, fix: "I", label: "lowercase 'i'" },
+  { pattern: /\byou're\s+(a\s+)?(right|wrong|correct|the\s+best)/i, fix: "", label: "" }, // valid usage, skip
+  { pattern: /\byour\s+(a\s+|going|welcome|the\s+one\s+who|doing|right|wrong)/i, fix: "you're", label: "your → you're" },
+  { pattern: /\byou're\s+(own|company|team|product|app|site|tool|brand|business|account)/i, fix: "your", label: "you're → your" },
+  { pattern: /\btheir\s+(is|are|was|were|going|doing|coming)\b/i, fix: "there", label: "their → there" },
+  { pattern: /\bthere\s+(own|company|team|product|idea|fault|problem)\b/i, fix: "their", label: "there → their" },
+  { pattern: /\bshould of\b/i, fix: "should have", label: "should of → should have" },
+  { pattern: /\bcould of\b/i, fix: "could have", label: "could of → could have" },
+  { pattern: /\bwould of\b/i, fix: "would have", label: "would of → would have" },
+  { pattern: /\balot\b/i, fix: "a lot", label: "alot → a lot" },
+  { pattern: /\bdefinate(ly)?\b/i, fix: "definite$1", label: "definate → definite" },
+  { pattern: /\bseperate\b/i, fix: "separate", label: "seperate → separate" },
+  { pattern: /\brecieve\b/i, fix: "receive", label: "recieve → receive" },
+  { pattern: /\boccur(r)?ance\b/i, fix: "occurrence", label: "spelling: occurrence" },
+  { pattern: /\bthe\s+the\b/i, fix: "the", label: "repeated 'the the'" },
+  { pattern: /\b(a)\s+\1\b/i, fix: "$1", label: "repeated word" },
+];
+
+export const grammarCheckRule: RuleDefinition = {
+  id: 'penalty-grammar',
+  name: 'Grammar Check',
+  category: 'penalty',
+  runOn: 'client',
+  evaluate: (input: TweetInput): RuleResult => {
+    const text = input.text;
+    const issues: string[] = [];
+
+    for (const { pattern, label } of GRAMMAR_PATTERNS) {
+      if (!label) continue; // skip valid-usage patterns
+      pattern.lastIndex = 0;
+      if (pattern.test(text)) {
+        issues.push(label);
+      }
+    }
+
+    if (issues.length === 0) {
+      return { ruleId: 'penalty-grammar', triggered: false, points: 0, severity: 'info' };
+    }
+
+    return {
+      ruleId: 'penalty-grammar',
+      triggered: true,
+      points: -Math.min(issues.length * 2, 6), // -2 per issue, max -6
+      severity: issues.length >= 3 ? 'critical' : 'warning',
+      suggestion: `Grammar: ${issues.join(', ')}. Fix these for credibility.`,
+    };
+  },
+};

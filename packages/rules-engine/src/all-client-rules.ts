@@ -38,6 +38,7 @@ import {
   combativeToneRule,
   specificNumberRule,
   mediaPresenceRule,
+  grammarCheckRule,
 } from './rules/reply-potential-rules';
 
 export const allClientRules: RuleDefinition[] = [
@@ -75,4 +76,5 @@ export const allClientRules: RuleDefinition[] = [
   // Bonus rules
   specificNumberRule,
   mediaPresenceRule,
+  grammarCheckRule,
 ];
