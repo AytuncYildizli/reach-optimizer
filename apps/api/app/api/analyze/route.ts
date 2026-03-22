@@ -5,6 +5,7 @@ import { prisma } from '@lib/db';
 import { env } from '@lib/env';
 import { ScoreEngine, allClientRules } from '@reach/rules-engine';
 import { AIAnalyzer } from '@reach/ai-checks';
+import { getCachedTrends, checkTrendingAlignment } from '../trending/route';
 import type { AnalyzeRequest, AnalyzeResponse, ErrorResponse, AnalysisResult } from '@reach/shared-types';
 
 // Force Node.js runtime (Anthropic SDK needs net/tls)
@@ -82,6 +83,29 @@ export async function POST(request: NextRequest) {
       .filter(r => r.triggered)
       .reduce((sum, r) => sum + r.points, 0);
     finalResult.reachScore = Math.max(0, Math.min(100, finalResult.reachScore + serverPoints));
+  }
+
+  // 6b. Trending topic alignment (+5 bonus)
+  try {
+    const trendingData = await getCachedTrends();
+    const alignment = checkTrendingAlignment(body.content, trendingData.trends);
+    finalResult.trendingAlignment = alignment;
+
+    if (alignment.isAligned) {
+      finalResult.reachScore = Math.min(100, finalResult.reachScore + alignment.bonusPoints);
+      finalResult.breakdown.bonuses += alignment.bonusPoints;
+
+      const trendNames = alignment.matchedTrends.map(t => t.name).join(', ');
+      finalResult.suggestions.push({
+        ruleId: 'server-trending-boost',
+        severity: 'positive',
+        title: 'Trending Topic Boost',
+        description: `Your tweet aligns with trending topic${alignment.matchedTrends.length > 1 ? 's' : ''}: ${trendNames}. +${alignment.bonusPoints} bonus points!`,
+      });
+    }
+  } catch (error) {
+    console.error('[Analyze] Trending alignment check failed (non-blocking):', error);
+    finalResult.trendingAlignment = null;
   }
 
   // 7. Save to DB only if authenticated

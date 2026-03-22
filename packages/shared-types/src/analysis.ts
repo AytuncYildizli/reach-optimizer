@@ -23,6 +23,28 @@ export interface Suggestion {
   highlight?: TextHighlight;
 }
 
+/** A single trending topic from X */
+export interface TrendingTopic {
+  /** Trend name (e.g. "#AI", "ChatGPT", "Super Bowl") */
+  name: string;
+  /** Cleaned keyword for matching (lowercase, no #) */
+  keyword: string;
+  /** Rank position (1 = top trend) */
+  rank: number;
+  /** Tweet volume if available */
+  tweetVolume: number | null;
+}
+
+/** Result of checking tweet text against trending topics */
+export interface TrendingAlignment {
+  /** Whether any trending topic was found in the text */
+  isAligned: boolean;
+  /** Matched trending topics (could be multiple) */
+  matchedTrends: TrendingTopic[];
+  /** Bonus points added to score */
+  bonusPoints: number;
+}
+
 export interface AnalysisResult {
   reachScore: number;
   tier: ScoreTier;
@@ -31,4 +53,6 @@ export interface AnalysisResult {
   suggestions: Suggestion[];
   highlights: TextHighlight[];
   isServerEnhanced: boolean;
+  /** Trending topic alignment data (only present when server-enhanced) */
+  trendingAlignment?: TrendingAlignment | null;
 }

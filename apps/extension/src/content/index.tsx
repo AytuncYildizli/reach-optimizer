@@ -41,13 +41,19 @@ let latestScore = 0;
  */
 function mergeServerResult(
   clientAnalysis: AnalysisResult,
-  serverData: { reachScore?: number; aiSlopScore?: number | null; suggestions?: AnalysisResult["suggestions"] },
+  serverData: {
+    reachScore?: number;
+    aiSlopScore?: number | null;
+    suggestions?: AnalysisResult["suggestions"];
+    trendingAlignment?: AnalysisResult["trendingAlignment"];
+  },
 ): AnalysisResult {
   return {
     ...clientAnalysis,
     reachScore: serverData.reachScore ?? clientAnalysis.reachScore,
     aiSlopScore: serverData.aiSlopScore ?? clientAnalysis.aiSlopScore,
     suggestions: serverData.suggestions ?? clientAnalysis.suggestions,
+    trendingAlignment: serverData.trendingAlignment ?? null,
     isServerEnhanced: true,
   };
 }
