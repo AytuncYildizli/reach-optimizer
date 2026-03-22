@@ -1,5 +1,6 @@
 import { prisma } from '@lib/db';
 import { CopyButton } from './CopyButton';
+import pg from 'pg';
 
 export const metadata = {
   title: 'ReachOS Dashboard',
@@ -91,6 +92,35 @@ export default async function DashboardPage() {
     tweets = await fetchTweets();
   } catch {
     dbError = true;
+  }
+
+  // Fetch optimized tweets from ops DB (yellow-jacket)
+  let opsTweets: Array<{
+    id: number;
+    text: string;
+    score: number;
+    status: string;
+    hook_type: string;
+    char_count: number;
+    created_at: string;
+  }> = [];
+  try {
+    if (process.env.OPS_DATABASE_URL) {
+      const opsClient = new pg.Client({ connectionString: process.env.OPS_DATABASE_URL });
+      await opsClient.connect();
+      const { rows } = await opsClient.query(`
+        SELECT id, LEFT(tweet_text, 100) as text, rating as score, status, hook_type,
+               char_count, created_at
+        FROM tweets
+        WHERE rating IS NOT NULL
+        ORDER BY rating DESC
+        LIMIT 20
+      `);
+      opsTweets = rows;
+      await opsClient.end();
+    }
+  } catch (e) {
+    console.error('Ops DB error:', e);
   }
 
   // Stats
@@ -214,6 +244,118 @@ export default async function DashboardPage() {
             </div>
           )}
         </section>
+
+        {/* Optimization Leaderboard */}
+        {opsTweets.length > 0 && (
+          <section style={styles.section}>
+            <h2 style={styles.sectionTitle}>Optimization Leaderboard</h2>
+            <p style={{ color: colors.textSecondary, margin: '0 0 12px 0', fontSize: 14 }}>
+              Top optimized tweets from ops pipeline — sorted by score
+            </p>
+            <div style={{
+              display: 'flex',
+              flexWrap: 'wrap' as const,
+              gap: 16,
+              marginBottom: 20,
+            }}>
+              <div style={styles.statCard}>
+                <span style={{ color: colors.textSecondary, fontSize: 13 }}>Total Optimized</span>
+                <span style={{ color: colors.green, fontSize: 28, fontWeight: 700, lineHeight: 1.2 }}>
+                  {opsTweets.length}
+                </span>
+              </div>
+              <div style={styles.statCard}>
+                <span style={{ color: colors.textSecondary, fontSize: 13 }}>Avg Score</span>
+                <span style={{
+                  color: scoreColor(Math.round(opsTweets.reduce((s, t) => s + (t.score || 0), 0) / opsTweets.length)),
+                  fontSize: 28, fontWeight: 700, lineHeight: 1.2,
+                }}>
+                  {Math.round(opsTweets.reduce((s, t) => s + (t.score || 0), 0) / opsTweets.length)}
+                </span>
+              </div>
+              <div style={styles.statCard}>
+                <span style={{ color: colors.textSecondary, fontSize: 13 }}>Best Score</span>
+                <span style={{
+                  color: scoreColor(Math.max(...opsTweets.map(t => t.score || 0))),
+                  fontSize: 28, fontWeight: 700, lineHeight: 1.2,
+                }}>
+                  {Math.max(...opsTweets.map(t => t.score || 0))}
+                </span>
+              </div>
+            </div>
+            <div style={{ overflowX: 'auto' as const }}>
+              <table style={{
+                width: '100%',
+                borderCollapse: 'collapse' as const,
+                fontSize: 14,
+              }}>
+                <thead>
+                  <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
+                    <th style={{ ...styles.tableHeader, width: 60 }}>Score</th>
+                    <th style={styles.tableHeader}>Tweet</th>
+                    <th style={{ ...styles.tableHeader, width: 100 }}>Hook</th>
+                    <th style={{ ...styles.tableHeader, width: 90 }}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {opsTweets.map((t) => (
+                    <tr key={t.id} style={{ borderBottom: `1px solid ${colors.border}22` }}>
+                      <td style={styles.tableCell}>
+                        <span style={{
+                          ...styles.scoreBadge,
+                          backgroundColor: scoreColor(t.score) + '22',
+                          color: scoreColor(t.score),
+                          border: `1px solid ${scoreColor(t.score)}44`,
+                          fontSize: 13,
+                        }}>
+                          {t.score}
+                        </span>
+                      </td>
+                      <td style={{ ...styles.tableCell, color: colors.textPrimary, maxWidth: 400 }}>
+                        {truncate(t.text || '', 90)}
+                      </td>
+                      <td style={styles.tableCell}>
+                        {t.hook_type && (
+                          <span style={{
+                            fontSize: 11,
+                            fontWeight: 600,
+                            color: colors.blue,
+                            backgroundColor: colors.blue + '18',
+                            border: `1px solid ${colors.blue}44`,
+                            borderRadius: 4,
+                            padding: '2px 8px',
+                          }}>
+                            {t.hook_type}
+                          </span>
+                        )}
+                      </td>
+                      <td style={styles.tableCell}>
+                        <span style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          color: t.status === 'posted' ? colors.green
+                            : t.status === 'approved' ? colors.blue
+                            : colors.yellow,
+                          backgroundColor: (t.status === 'posted' ? colors.green
+                            : t.status === 'approved' ? colors.blue
+                            : colors.yellow) + '18',
+                          border: `1px solid ${(t.status === 'posted' ? colors.green
+                            : t.status === 'approved' ? colors.blue
+                            : colors.yellow)}44`,
+                          borderRadius: 4,
+                          padding: '2px 8px',
+                          textTransform: 'capitalize' as const,
+                        }}>
+                          {t.status || 'pending'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
 
         {/* Daily Suggestions */}
         <section style={styles.section}>
@@ -496,6 +638,22 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 14,
     lineHeight: 1.5,
     whiteSpace: 'pre-wrap' as const,
+  },
+  // Table
+  tableHeader: {
+    textAlign: 'left' as const,
+    padding: '10px 12px',
+    color: colors.textSecondary,
+    fontSize: 12,
+    fontWeight: 600,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+  },
+  tableCell: {
+    padding: '10px 12px',
+    color: colors.textSecondary,
+    fontSize: 14,
+    verticalAlign: 'middle' as const,
   },
   // Empty state
   emptyState: {
