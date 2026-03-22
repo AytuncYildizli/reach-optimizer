@@ -5,7 +5,7 @@ import { prisma } from '@lib/db';
 import { env } from '@lib/env';
 import { ScoreEngine, allClientRules } from '@reach/rules-engine';
 import { AIAnalyzer } from '@reach/ai-checks';
-import { getCachedTrends, checkTrendingAlignment } from '../trending/route';
+import { getCachedTrends, checkTrendingAlignment } from '@lib/trending';
 import type { AnalyzeRequest, AnalyzeResponse, ErrorResponse, AnalysisResult } from '@reach/shared-types';
 
 // Force Node.js runtime (Anthropic SDK needs net/tls)
