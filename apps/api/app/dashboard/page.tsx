@@ -1,5 +1,6 @@
 import { prisma } from '@lib/db';
 import { CopyButton } from './CopyButton';
+import { TweetRow } from './TweetRow';
 import pg from 'pg';
 
 export const metadata = {
@@ -109,7 +110,7 @@ export default async function DashboardPage() {
       const opsClient = new pg.Client({ connectionString: process.env.OPS_DATABASE_URL });
       await opsClient.connect();
       const { rows } = await opsClient.query(`
-        SELECT id, LEFT(tweet_text, 100) as text, rating as score, status, hook_type,
+        SELECT id, tweet_text as text, rating as score, status, hook_type,
                char_count, created_at
         FROM tweets
         WHERE rating IS NOT NULL
@@ -299,57 +300,13 @@ export default async function DashboardPage() {
                 </thead>
                 <tbody>
                   {opsTweets.map((t) => (
-                    <tr key={t.id} style={{ borderBottom: `1px solid ${colors.border}22` }}>
-                      <td style={styles.tableCell}>
-                        <span style={{
-                          ...styles.scoreBadge,
-                          backgroundColor: scoreColor(t.score) + '22',
-                          color: scoreColor(t.score),
-                          border: `1px solid ${scoreColor(t.score)}44`,
-                          fontSize: 13,
-                        }}>
-                          {t.score}
-                        </span>
-                      </td>
-                      <td style={{ ...styles.tableCell, color: colors.textPrimary, maxWidth: 400 }}>
-                        {truncate(t.text || '', 90)}
-                      </td>
-                      <td style={styles.tableCell}>
-                        {t.hook_type && (
-                          <span style={{
-                            fontSize: 11,
-                            fontWeight: 600,
-                            color: colors.blue,
-                            backgroundColor: colors.blue + '18',
-                            border: `1px solid ${colors.blue}44`,
-                            borderRadius: 4,
-                            padding: '2px 8px',
-                          }}>
-                            {t.hook_type}
-                          </span>
-                        )}
-                      </td>
-                      <td style={styles.tableCell}>
-                        <span style={{
-                          fontSize: 11,
-                          fontWeight: 600,
-                          color: t.status === 'posted' ? colors.green
-                            : t.status === 'approved' ? colors.blue
-                            : colors.yellow,
-                          backgroundColor: (t.status === 'posted' ? colors.green
-                            : t.status === 'approved' ? colors.blue
-                            : colors.yellow) + '18',
-                          border: `1px solid ${(t.status === 'posted' ? colors.green
-                            : t.status === 'approved' ? colors.blue
-                            : colors.yellow)}44`,
-                          borderRadius: 4,
-                          padding: '2px 8px',
-                          textTransform: 'capitalize' as const,
-                        }}>
-                          {t.status || 'pending'}
-                        </span>
-                      </td>
-                    </tr>
+                    <TweetRow
+                      key={t.id}
+                      text={t.text || ''}
+                      score={t.score || 0}
+                      hookType={t.hook_type}
+                      status={t.status}
+                    />
                   ))}
                 </tbody>
               </table>
