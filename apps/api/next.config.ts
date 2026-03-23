@@ -1,7 +1,8 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  distDir: process.env.VERCEL ? '../../.next' : '.next',
+  // Let Vercel handle output directory (vercel.json outputDirectory: "apps/api/.next")
+  distDir: '.next',
   serverExternalPackages: ['pg'],
   transpilePackages: [
     '@reach/shared-types',
