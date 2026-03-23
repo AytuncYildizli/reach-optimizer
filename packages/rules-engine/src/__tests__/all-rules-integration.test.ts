@@ -3,8 +3,8 @@ import { ScoreEngine } from '../engine';
 import { allClientRules } from '../all-client-rules';
 
 describe('allClientRules registry', () => {
-  it('contains 33 rules', () => {
-    expect(allClientRules).toHaveLength(33);
+  it('contains 36 rules', () => {
+    expect(allClientRules).toHaveLength(36);
   });
 
   it('every rule has required fields', () => {
@@ -48,8 +48,8 @@ describe('ScoreEngine with all client rules', () => {
       hasMedia: false,
     });
     // Generic hook -8 (hook, clamped to 0), link -8 (penalty), engagement bait -12 (penalty)
-    // Penalties heavily stack; score well below 30
-    expect(result.reachScore).toBeLessThanOrEqual(20);
+    // Penalties stack heavily; score in critical/below_average range
+    expect(result.reachScore).toBeLessThanOrEqual(25);
     expect(result.suggestions.length).toBeGreaterThanOrEqual(3);
   });
 

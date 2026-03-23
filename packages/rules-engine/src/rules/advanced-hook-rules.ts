@@ -175,6 +175,7 @@ const COMPOUND_CONTRARIAN = /\b(overrated|underrated|wrong about|nobody talks ab
 const COMPOUND_STORY = /^(Last |Yesterday|I (just|recently|spent|built|quit|lost|made)|Back in 20|When I was|True story:)/i;
 const COMPOUND_INTERRUPT = /^(Stop |Never |Don't |Quit |Forget |Avoid |Skip )/i;
 const COMPOUND_BOLD = /^(The (best|worst|biggest|fastest|most|only|single)|No one|Everyone|Every single)/i;
+const COMPOUND_CONTRAST = /\b(million|billion|\d{3,}|zero|0\b).{0,30}\b(zero|0\b|million|billion|\d{3,}|none|nothing)/i;
 
 export const compoundHookRule: RuleDefinition = {
   id: 'hook-compound-quality',
@@ -184,6 +185,7 @@ export const compoundHookRule: RuleDefinition = {
   evaluate: (input: TweetInput): RuleResult => {
     const first80 = input.text.slice(0, 80);
     const firstLine = input.text.split('\n')[0];
+    const first150 = input.text.slice(0, 150);
     let signals = 0;
 
     if (COMPOUND_NUMBER.test(first80)) signals++;
@@ -193,6 +195,7 @@ export const compoundHookRule: RuleDefinition = {
     if (COMPOUND_INTERRUPT.test(input.text)) signals++;
     if (COMPOUND_BOLD.test(first80)) signals++;
     if (LIST_PROMISE.test(firstLine)) signals++;
+    if (COMPOUND_CONTRAST.test(first150)) signals++;
 
     if (signals >= 2) {
       return {

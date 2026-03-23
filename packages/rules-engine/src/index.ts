@@ -47,3 +47,8 @@ export {
   hashtagPlacementRule,
   allCapsSpamRule,
 } from './rules/reply-potential-rules';
+export {
+  sentimentToneRule,
+  readabilityRule,
+  contrastSurpriseRule,
+} from './rules/quality-signal-rules';

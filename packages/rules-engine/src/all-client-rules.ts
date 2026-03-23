@@ -44,6 +44,11 @@ import {
   hashtagPlacementRule,
   allCapsSpamRule,
 } from './rules/reply-potential-rules';
+import {
+  sentimentToneRule,
+  readabilityRule,
+  contrastSurpriseRule,
+} from './rules/quality-signal-rules';
 
 export const allClientRules: RuleDefinition[] = [
   // Hook rules
@@ -60,12 +65,14 @@ export const allClientRules: RuleDefinition[] = [
   boldClaimRule,
   listPromiseRule,
   compoundHookRule,
+  contrastSurpriseRule,
   // Structure rules
   characterLengthRule,
   hashtagCountRule,
   emojiCountRule,
   threadLengthRule,
   lineBreaksRule,
+  readabilityRule,
   // Engagement rules
   ctaPresenceRule,
   bookmarkValueRule,
@@ -82,7 +89,8 @@ export const allClientRules: RuleDefinition[] = [
   combativeToneRule,
   hashtagPlacementRule,
   allCapsSpamRule,
-  // Bonus rules
+  // Bonus / quality rules
   mediaPresenceRule,
   grammarCheckRule,
+  sentimentToneRule,
 ];
