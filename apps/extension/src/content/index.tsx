@@ -5,6 +5,7 @@ import type { AnalysisResult, TweetInput } from "@reach/shared-types";
 import { ComposerDetector } from "./composer-detector";
 import { setupPostTracker } from "./post-tracker";
 import { setupReplyCoach } from "./reply-coach";
+import { setupXRayMode } from "./xray-mode";
 import { ScoreOverlay } from "./ScoreOverlay";
 import { OVERLAY_STYLES } from "./styles";
 
@@ -313,8 +314,9 @@ function init(): void {
   );
 
   setupReplyCoach();
+  setupXRayMode();
 
-  console.log("[ReachOS] Overlay mounted, composer detector started, post tracker active, reply coach active");
+  console.log("[ReachOS] Overlay mounted, composer detector started, post tracker active, reply coach active, X-Ray mode active");
 }
 
 if (document.readyState === "loading") {
