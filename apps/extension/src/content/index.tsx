@@ -63,6 +63,22 @@ function mergeServerResult(
  * Request server analysis via the background service worker.
  */
 function requestServerAnalysis(text: string): void {
+  // Check if we have an auth token before making server requests
+  // If not logged in, silently skip — server analysis is a premium feature
+  try {
+    chrome.storage.local.get('authToken', (result) => {
+      if (chrome.runtime.lastError || !result.authToken) {
+        // No token — skip server analysis silently (not an error)
+        return;
+      }
+      doServerRequest(text);
+    });
+  } catch {
+    // Extension context lost — silently skip
+  }
+}
+
+function doServerRequest(text: string): void {
   isServerPending = true;
   if (setGlobalServerPending) setGlobalServerPending(true);
 
