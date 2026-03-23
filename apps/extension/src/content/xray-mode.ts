@@ -11,14 +11,22 @@ const engine = new ScoreEngine(allClientRules);
 // Track which tweets we've already scored (by element reference)
 const scoredTweets = new WeakSet<HTMLElement>();
 
-// Score tier to color mapping
-const TIER_COLORS: Record<string, string> = {
-  critical: "#f4212e",
-  below_average: "#ffd400",
-  good: "#00ba7c",
-  excellent: "#00ba7c",
-  perfect: "#1d9bf0",
-};
+// X-Ray uses tighter tiers so differences are visible in timeline
+const XRAY_TIERS = [
+  { max: 35, label: "weak", color: "#f4212e" },    // red
+  { max: 45, label: "meh", color: "#ff6f00" },      // orange
+  { max: 52, label: "avg", color: "#ffd400" },       // yellow
+  { max: 60, label: "solid", color: "#00ba7c" },     // green
+  { max: 75, label: "strong", color: "#1d9bf0" },    // blue
+  { max: 100, label: "fire", color: "#b45bff" },     // purple
+];
+
+function getXrayTier(score: number) {
+  for (const t of XRAY_TIERS) {
+    if (score <= t.max) return t;
+  }
+  return XRAY_TIERS[XRAY_TIERS.length - 1];
+}
 
 /**
  * Extract tweet text from a tweet article element.
@@ -46,15 +54,16 @@ function tweetHasMedia(tweetEl: HTMLElement): boolean {
 /**
  * Create the score pill element using safe DOM methods (no innerHTML).
  */
-function createScorePill(score: number, tier: string): HTMLElement {
-  const color = TIER_COLORS[tier] || "#71767b";
+function createScorePill(score: number, _tier: string): HTMLElement {
+  const xrayTier = getXrayTier(score);
+  const color = xrayTier.color;
 
   const pill = document.createElement("div");
   pill.className = "reachos-xray-pill";
   pill.setAttribute("data-reachos-xray", "true");
 
   const span = document.createElement("span");
-  span.title = `ReachOS X-Ray: ${score}/100 (${tier})`;
+  span.title = `ReachOS X-Ray: ${score}/100 (${xrayTier.label})`;
   Object.assign(span.style, {
     display: "inline-flex",
     alignItems: "center",
