@@ -283,10 +283,10 @@ const TIER_COLORS: Record<ScoreTier, string> = {
 
 const TIER_LABELS: Record<ScoreTier, string> = {
   critical: "Don't Post",
-  below_average: "Needs Work",
-  good: "Good",
-  excellent: "Excellent",
-  perfect: "Perfect",
+  below_average: "Below Average",
+  good: "Average",
+  excellent: "Strong",
+  perfect: "Exceptional",
 };
 
 const SEVERITY_ORDER: Record<string, number> = {

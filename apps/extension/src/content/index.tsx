@@ -66,32 +66,48 @@ function requestServerAnalysis(text: string): void {
   isServerPending = true;
   if (setGlobalServerPending) setGlobalServerPending(true);
 
-  chrome.runtime.sendMessage(
-    {
-      type: "API_REQUEST",
-      endpoint: "/api/analyze",
-      method: "POST",
-      body: { content: text, platform: "x" },
-    },
-    (response) => {
-      isServerPending = false;
-      if (setGlobalServerPending) setGlobalServerPending(false);
+  try {
+    chrome.runtime.sendMessage(
+      {
+        type: "API_REQUEST",
+        endpoint: "/api/analyze",
+        method: "POST",
+        body: { content: text, platform: "x" },
+      },
+      (response) => {
+        // Guard against extension context invalidated (SPA navigation, extension reload)
+        if (chrome.runtime.lastError) {
+          console.warn("[ReachOS] Extension context lost:", chrome.runtime.lastError.message);
+          isServerPending = false;
+          if (setGlobalServerPending) setGlobalServerPending(false);
+          return;
+        }
 
-      if (response?.ok && response.data?.success && latestClientAnalysis) {
-        if (setGlobalServerError) setGlobalServerError(false);
-        const merged = mergeServerResult(latestClientAnalysis, response.data.data);
-        if (setGlobalAnalysis) setGlobalAnalysis(merged);
-        chrome.runtime.sendMessage({ type: "UPDATE_BADGE", score: merged.reachScore });
-        console.log("[ReachOS] Server analysis merged", {
-          aiSlopScore: merged.aiSlopScore,
-          reachScore: merged.reachScore,
-        });
-      } else {
-        if (setGlobalServerError) setGlobalServerError(true);
-        console.warn("[ReachOS] Server analysis failed or stale", response);
-      }
-    },
-  );
+        isServerPending = false;
+        if (setGlobalServerPending) setGlobalServerPending(false);
+
+        if (response?.ok && response.data?.success && latestClientAnalysis) {
+          if (setGlobalServerError) setGlobalServerError(false);
+          const merged = mergeServerResult(latestClientAnalysis, response.data.data);
+          if (setGlobalAnalysis) setGlobalAnalysis(merged);
+          try {
+            chrome.runtime.sendMessage({ type: "UPDATE_BADGE", score: merged.reachScore });
+          } catch { /* badge update is non-critical */ }
+          console.log("[ReachOS] Server analysis merged", {
+            aiSlopScore: merged.aiSlopScore,
+            reachScore: merged.reachScore,
+          });
+        } else {
+          if (setGlobalServerError) setGlobalServerError(true);
+          console.warn("[ReachOS] Server analysis failed or stale", response);
+        }
+      },
+    );
+  } catch {
+    // Extension context invalidated — silently ignore
+    isServerPending = false;
+    if (setGlobalServerPending) setGlobalServerPending(false);
+  }
 }
 
 // ---------------------------------------------------------------------------
