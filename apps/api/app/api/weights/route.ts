@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@lib/db';
 import { verifyToken } from '@lib/auth';
 import { analyzeRulePerformance, generateWeightAdjustments } from '@lib/weight-learner';
 
@@ -6,8 +7,8 @@ export const runtime = 'nodejs';
 
 /**
  * GET /api/weights — returns current weight adjustments for the user.
- * If user has enough data, return personalized weights.
- * Otherwise return global defaults.
+ * If user is authenticated and has personalized weights in DB, return those.
+ * Otherwise fall back to global defaults.
  */
 export async function GET(req: NextRequest) {
   // Try to get user-specific weights if authenticated
@@ -21,24 +22,26 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // If authenticated, try personalized weights first
+    // If authenticated, read personalized weights from DB first
     if (userId) {
-      const userPerformance = await analyzeRulePerformance(userId);
-      if (userPerformance.length > 0) {
-        const adjustments = generateWeightAdjustments(userPerformance);
-        if (Object.keys(adjustments).length > 0) {
-          return NextResponse.json({
-            type: 'personalized',
-            userId,
-            adjustments,
-            rulesAnalyzed: userPerformance.length,
-            topRules: userPerformance.slice(0, 5),
-          });
-        }
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { personalizedWeights: true },
+      });
+
+      const weights = user?.personalizedWeights as Record<string, number> | null;
+
+      if (weights && Object.keys(weights).length > 0) {
+        return NextResponse.json({
+          type: 'personalized',
+          userId,
+          adjustments: weights,
+          rulesCount: Object.keys(weights).length,
+        });
       }
     }
 
-    // Fall back to global weights
+    // Fall back to global weights (computed on-the-fly since there's no global store)
     const globalPerformance = await analyzeRulePerformance();
     const globalAdjustments = generateWeightAdjustments(globalPerformance);
 
@@ -52,6 +55,7 @@ export async function GET(req: NextRequest) {
           : `Based on ${globalPerformance.length} rules analyzed globally.`,
     });
   } catch (error) {
+    console.error('[weights] Failed to fetch weights:', error);
     return NextResponse.json(
       {
         success: false,

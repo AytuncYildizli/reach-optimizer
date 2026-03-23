@@ -1,9 +1,7 @@
+import { cookies } from 'next/headers';
 import { prisma } from '@lib/db';
+import { verifyToken } from '@lib/auth';
 import { CopyButton } from './CopyButton';
-import { TweetRow } from './TweetRow';
-import { analyzeRulePerformance } from '@lib/weight-learner';
-import { generateCalibrationReport, type CalibrationReport } from '@lib/calibration';
-import pg from 'pg';
 
 export const metadata = {
   title: 'ReachOS Dashboard',
@@ -60,13 +58,6 @@ function truncate(text: string, maxLen: number): string {
   return text.slice(0, maxLen).trimEnd() + '...';
 }
 
-function formatRuleId(ruleId: string): string {
-  return ruleId
-    .replace(/^(hook|structure|engagement|penalty|bonus)-/, '')
-    .replace(/-/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 // -- Suggestion templates (static for MVP, no AI call needed) --
 
 const dailySuggestions = [
@@ -92,79 +83,107 @@ const dailySuggestions = [
   },
 ];
 
+// -- Auth helper --
+
+async function getAuthenticatedUserId(): Promise<string | null> {
+  const cookieStore = await cookies();
+  const tokenCookie = cookieStore.get('reachos_token');
+  if (!tokenCookie?.value) return null;
+  const result = await verifyToken(tokenCookie.value);
+  return result?.userId ?? null;
+}
+
 // -- Component --
 
-export default async function DashboardPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ admin?: string }>;
-}) {
-  const params = await searchParams;
-  const isAdmin = params.admin === '1';
+export default async function DashboardPage() {
+  const userId = await getAuthenticatedUserId();
 
-  let tweets: Awaited<ReturnType<typeof fetchTweets>> = [];
-  let dbError = false;
-
-  // Only fetch personal/ops data in admin mode
-  let opsTweets: Array<{
-    id: number;
-    text: string;
-    score: number;
-    status: string;
-    hook_type: string;
-    char_count: number;
-    created_at: string;
-  }> = [];
-  let rulePerformance: Awaited<ReturnType<typeof analyzeRulePerformance>> = [];
-  let calibration: CalibrationReport | null = null;
-
-  if (isAdmin) {
-    try {
-      tweets = await fetchTweets();
-    } catch {
-      dbError = true;
-    }
-
-    // Fetch optimized tweets from ops DB (yellow-jacket)
-    try {
-      if (process.env.OPS_DATABASE_URL) {
-        const opsClient = new pg.Client({ connectionString: process.env.OPS_DATABASE_URL });
-        await opsClient.connect();
-        const { rows } = await opsClient.query(`
-          SELECT id, tweet_text as text, rating as score, status, hook_type,
-                 char_count, created_at
-          FROM tweets
-          WHERE rating IS NOT NULL
-          ORDER BY rating DESC
-          LIMIT 20
-        `);
-        opsTweets = rows;
-        await opsClient.end();
-      }
-    } catch (e) {
-      console.error('Ops DB error:', e);
-    }
-
-    // Learning Insights data
-    try {
-      rulePerformance = await analyzeRulePerformance();
-    } catch {
-      // Non-critical, skip if fails
-    }
-
-    // Calibration data
-    try {
-      calibration = await generateCalibrationReport();
-    } catch {
-      // Non-critical, skip if fails
-    }
+  // Auth gate: no valid token => show login prompt
+  if (!userId) {
+    return (
+      <div style={styles.page}>
+        <header style={styles.header}>
+          <div style={styles.headerInner}>
+            <div style={styles.logoRow}>
+              <span style={styles.logoDot} />
+              <h1 style={styles.logoText}>ReachOS Dashboard</h1>
+            </div>
+            <span style={styles.betaBadge}>BETA</span>
+          </div>
+        </header>
+        <main style={styles.main}>
+          <div style={{
+            ...styles.emptyState,
+            maxWidth: 480,
+            margin: '80px auto',
+            padding: '48px 32px',
+          }}>
+            <h2 style={{
+              color: colors.textPrimary,
+              fontSize: 22,
+              fontWeight: 700,
+              margin: '0 0 12px 0',
+            }}>
+              Sign in to ReachOS
+            </h2>
+            <p style={{
+              color: colors.textSecondary,
+              fontSize: 15,
+              lineHeight: 1.6,
+              margin: '0 0 24px 0',
+            }}>
+              Log in with your X account to view your tweet analytics, reach scores,
+              and personalized optimization insights.
+            </p>
+            <a
+              href="/api/auth/login"
+              style={{
+                display: 'inline-block',
+                backgroundColor: colors.blue,
+                color: '#fff',
+                fontSize: 15,
+                fontWeight: 600,
+                padding: '12px 32px',
+                borderRadius: 8,
+                textDecoration: 'none',
+              }}
+            >
+              Sign in with X
+            </a>
+          </div>
+        </main>
+        <footer style={styles.footer}>
+          <span style={{ color: colors.textSecondary, fontSize: 13 }}>
+            ReachOS - Tweet Reach Optimization Platform
+          </span>
+        </footer>
+      </div>
+    );
   }
 
-  // Stats
+  // Fetch user's data
+  let tweets: Awaited<ReturnType<typeof fetchUserTweets>> = [];
+  let analyses: Awaited<ReturnType<typeof fetchUserAnalyses>> = [];
+  let dbError = false;
+
+  try {
+    [tweets, analyses] = await Promise.all([
+      fetchUserTweets(userId),
+      fetchUserAnalyses(userId),
+    ]);
+  } catch {
+    dbError = true;
+  }
+
+  // My Stats
   const totalTweets = tweets.length;
   const avgScore =
     totalTweets > 0
       ? Math.round(tweets.reduce((s, t) => s + t.reachScore, 0) / totalTweets)
+      : 0;
+  const bestTweetScore =
+    totalTweets > 0
+      ? Math.max(...tweets.map((t) => t.reachScore))
       : 0;
   const avgViews =
     totalTweets > 0
@@ -173,9 +192,6 @@ export default async function DashboardPage({
             totalTweets,
         )
       : 0;
-
-  const topPositive = rulePerformance.filter((r) => r.lift > 0).slice(0, 5);
-  const topNegative = rulePerformance.filter((r) => r.lift < 0).slice(0, 5);
 
   const optimizedTweets = tweets.filter((t) => t.optimized);
   const nonOptimized = tweets.filter((t) => !t.optimized);
@@ -202,51 +218,46 @@ export default async function DashboardPage({
           <div style={styles.logoRow}>
             <span style={styles.logoDot} />
             <h1 style={styles.logoText}>ReachOS Dashboard</h1>
-            {isAdmin && (
-              <span style={styles.adminBadge}>ADMIN</span>
-            )}
           </div>
           <span style={styles.betaBadge}>BETA</span>
         </div>
       </header>
 
       <main style={styles.main}>
-        {/* Stats Bar */}
-        <section style={styles.statsBar}>
-          <StatCard label="Tweets Tracked" value={isAdmin ? String(totalTweets) : '0'} />
-          <StatCard
-            label="Avg Reach Score"
-            value={isAdmin && totalTweets > 0 ? String(avgScore) : '--'}
-            color={isAdmin && totalTweets > 0 ? scoreColor(avgScore) : colors.textSecondary}
-          />
-          <StatCard
-            label="Avg Views"
-            value={isAdmin && totalTweets > 0 ? formatNumber(avgViews) : '--'}
-          />
-          <StatCard
-            label="Optimization Impact"
-            value={isAdmin && impact !== 0 ? (impact > 0 ? `+${impact}%` : `${impact}%`) : '--'}
-            color={isAdmin && impact > 0 ? colors.green : isAdmin && impact < 0 ? colors.red : colors.textSecondary}
-          />
+        {/* My Stats */}
+        <section style={{ marginBottom: 32 }}>
+          <h2 style={styles.sectionTitle}>My Stats</h2>
+          <section style={styles.statsBar}>
+            <StatCard label="Tweets Tracked" value={String(totalTweets)} />
+            <StatCard
+              label="Avg Reach Score"
+              value={totalTweets > 0 ? String(avgScore) : '--'}
+              color={totalTweets > 0 ? scoreColor(avgScore) : colors.textSecondary}
+            />
+            <StatCard
+              label="Best Tweet Score"
+              value={totalTweets > 0 ? String(bestTweetScore) : '--'}
+              color={totalTweets > 0 ? scoreColor(bestTweetScore) : colors.textSecondary}
+            />
+            <StatCard
+              label="Avg Views"
+              value={totalTweets > 0 ? formatNumber(avgViews) : '--'}
+            />
+            <StatCard
+              label="Optimization Impact"
+              value={impact !== 0 ? (impact > 0 ? `+${impact}%` : `${impact}%`) : '--'}
+              color={impact > 0 ? colors.green : impact < 0 ? colors.red : colors.textSecondary}
+            />
+          </section>
         </section>
 
-        {/* Tweet List / Auth Gate */}
+        {/* Tweet List */}
         <section style={styles.section}>
           <h2 style={styles.sectionTitle}>Recent Tweets</h2>
-          {!isAdmin ? (
-            <div style={styles.emptyState}>
-              <p style={{ color: colors.textSecondary, margin: '0 0 12px 0', fontSize: 15 }}>
-                Track your tweets with the ReachOS extension.
-              </p>
-              <p style={{ color: colors.textSecondary, margin: 0, fontSize: 14, lineHeight: 1.6 }}>
-                Install it, write tweets on X.com, and your performance data will appear here.
-                Sign in with the extension to start tracking your posts.
-              </p>
-            </div>
-          ) : dbError ? (
+          {dbError ? (
             <div style={styles.emptyState}>
               <p style={{ color: colors.yellow, margin: 0 }}>
-                Unable to connect to database. Showing empty state.
+                Unable to connect to database. Please try again later.
               </p>
             </div>
           ) : totalTweets === 0 ? (
@@ -285,10 +296,10 @@ export default async function DashboardPage({
                     </p>
                     {m && (
                       <div style={styles.metricsRow}>
-                        <MetricPill icon="👁" label="Views" value={m.views} />
-                        <MetricPill icon="♥" label="Likes" value={m.likes} />
-                        <MetricPill icon="💬" label="Replies" value={m.replies} />
-                        <MetricPill icon="🔖" label="Bookmarks" value={m.bookmarks} />
+                        <MetricPill icon="Views" label="Views" value={m.views} />
+                        <MetricPill icon="Likes" label="Likes" value={m.likes} />
+                        <MetricPill icon="Replies" label="Replies" value={m.replies} />
+                        <MetricPill icon="Bookmarks" label="Bookmarks" value={m.bookmarks} />
                       </div>
                     )}
                   </div>
@@ -298,421 +309,7 @@ export default async function DashboardPage({
           )}
         </section>
 
-        {/* Optimization Leaderboard (admin only) */}
-        {isAdmin && opsTweets.length > 0 && (
-          <section style={styles.section}>
-            <h2 style={styles.sectionTitle}>Optimization Leaderboard</h2>
-            <p style={{ color: colors.textSecondary, margin: '0 0 12px 0', fontSize: 14 }}>
-              Top optimized tweets from ops pipeline — sorted by score
-            </p>
-            <div style={{
-              display: 'flex',
-              flexWrap: 'wrap' as const,
-              gap: 16,
-              marginBottom: 20,
-            }}>
-              <div style={styles.statCard}>
-                <span style={{ color: colors.textSecondary, fontSize: 13 }}>Total Optimized</span>
-                <span style={{ color: colors.green, fontSize: 28, fontWeight: 700, lineHeight: 1.2 }}>
-                  {opsTweets.length}
-                </span>
-              </div>
-              <div style={styles.statCard}>
-                <span style={{ color: colors.textSecondary, fontSize: 13 }}>Avg Score</span>
-                <span style={{
-                  color: scoreColor(Math.round(opsTweets.reduce((s, t) => s + (t.score || 0), 0) / opsTweets.length)),
-                  fontSize: 28, fontWeight: 700, lineHeight: 1.2,
-                }}>
-                  {Math.round(opsTweets.reduce((s, t) => s + (t.score || 0), 0) / opsTweets.length)}
-                </span>
-              </div>
-              <div style={styles.statCard}>
-                <span style={{ color: colors.textSecondary, fontSize: 13 }}>Best Score</span>
-                <span style={{
-                  color: scoreColor(Math.max(...opsTweets.map(t => t.score || 0))),
-                  fontSize: 28, fontWeight: 700, lineHeight: 1.2,
-                }}>
-                  {Math.max(...opsTweets.map(t => t.score || 0))}
-                </span>
-              </div>
-            </div>
-            <div style={{ overflowX: 'auto' as const }}>
-              <table style={{
-                width: '100%',
-                borderCollapse: 'collapse' as const,
-                fontSize: 14,
-              }}>
-                <thead>
-                  <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
-                    <th style={{ ...styles.tableHeader, width: 60 }}>Score</th>
-                    <th style={styles.tableHeader}>Tweet</th>
-                    <th style={{ ...styles.tableHeader, width: 100 }}>Hook</th>
-                    <th style={{ ...styles.tableHeader, width: 90 }}>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {opsTweets.map((t) => (
-                    <TweetRow
-                      key={t.id}
-                      text={t.text || ''}
-                      score={t.score || 0}
-                      hookType={t.hook_type}
-                      status={t.status}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )}
-
-        {/* Learning Insights (admin only) */}
-        {isAdmin && (
-        <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>Learning Insights</h2>
-          <p style={{ color: colors.textSecondary, margin: '0 0 16px 0', fontSize: 14 }}>
-            {rulePerformance.length > 0
-              ? 'Your scoring is getting smarter with every tweet you post.'
-              : 'Post and track more tweets to unlock personalized scoring insights.'}
-          </p>
-
-          {rulePerformance.length > 0 ? (
-            <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 16, marginBottom: 20 }}>
-              <div style={styles.statCard}>
-                <span style={{ color: colors.textSecondary, fontSize: 13 }}>Rules Analyzed</span>
-                <span style={{ color: colors.blue, fontSize: 28, fontWeight: 700, lineHeight: 1.2 }}>
-                  {rulePerformance.length}
-                </span>
-              </div>
-              <div style={styles.statCard}>
-                <span style={{ color: colors.textSecondary, fontSize: 13 }}>Positive Signals</span>
-                <span style={{ color: colors.green, fontSize: 28, fontWeight: 700, lineHeight: 1.2 }}>
-                  {topPositive.length}
-                </span>
-              </div>
-              <div style={styles.statCard}>
-                <span style={{ color: colors.textSecondary, fontSize: 13 }}>Negative Signals</span>
-                <span style={{ color: colors.red, fontSize: 28, fontWeight: 700, lineHeight: 1.2 }}>
-                  {topNegative.length}
-                </span>
-              </div>
-            </div>
-          ) : (
-            <div style={styles.emptyState}>
-              <p style={{ color: colors.textSecondary, margin: 0 }}>
-                Need at least 5 tracked tweets with engagement metrics to start learning.
-              </p>
-            </div>
-          )}
-
-          {topPositive.length > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              <h3 style={{ fontSize: 15, fontWeight: 600, color: colors.green, margin: '0 0 10px 0' }}>
-                Top Rules That Boost Performance
-              </h3>
-              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
-                {topPositive.map((rule) => (
-                  <div
-                    key={rule.ruleId}
-                    style={{
-                      backgroundColor: colors.card,
-                      border: `1px solid ${colors.border}`,
-                      borderRadius: 8,
-                      padding: '10px 16px',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <span style={{ color: colors.textPrimary, fontSize: 14 }}>
-                      {formatRuleId(rule.ruleId)}
-                    </span>
-                    <span style={{ color: colors.green, fontSize: 14, fontWeight: 600 }}>
-                      +{rule.lift} lift ({rule.timesTriggered} tweets)
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {topNegative.length > 0 && (
-            <div>
-              <h3 style={{ fontSize: 15, fontWeight: 600, color: colors.red, margin: '0 0 10px 0' }}>
-                Rules That Hurt Performance
-              </h3>
-              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
-                {topNegative.map((rule) => (
-                  <div
-                    key={rule.ruleId}
-                    style={{
-                      backgroundColor: colors.card,
-                      border: `1px solid ${colors.border}`,
-                      borderRadius: 8,
-                      padding: '10px 16px',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <span style={{ color: colors.textPrimary, fontSize: 14 }}>
-                      {formatRuleId(rule.ruleId)}
-                    </span>
-                    <span style={{ color: colors.red, fontSize: 14, fontWeight: 600 }}>
-                      {rule.lift} lift ({rule.timesTriggered} tweets)
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </section>
-        )}
-
-        {/* Score Calibration (admin only) */}
-        {isAdmin && (
-        <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>Score Calibration</h2>
-          <p style={{ color: colors.textSecondary, margin: '0 0 16px 0', fontSize: 14 }}>
-            {calibration?.status === 'ready'
-              ? 'How well our predicted scores match real-world tweet performance.'
-              : 'Need more tweets with engagement data to calibrate scoring accuracy.'}
-          </p>
-
-          {calibration?.status === 'ready' && calibration.correlation ? (
-            <>
-              {/* Calibration Stats */}
-              <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 16, marginBottom: 20 }}>
-                <div style={styles.statCard}>
-                  <span style={{ color: colors.textSecondary, fontSize: 13 }}>Correlation (r)</span>
-                  <span style={{
-                    color: Math.abs(calibration.correlation.pearson) >= 0.5 ? colors.green
-                      : Math.abs(calibration.correlation.pearson) >= 0.3 ? colors.yellow
-                      : colors.red,
-                    fontSize: 28, fontWeight: 700, lineHeight: 1.2,
-                  }}>
-                    {calibration.correlation.pearson.toFixed(3)}
-                  </span>
-                </div>
-                <div style={styles.statCard}>
-                  <span style={{ color: colors.textSecondary, fontSize: 13 }}>Avg Predicted</span>
-                  <span style={{ color: colors.blue, fontSize: 28, fontWeight: 700, lineHeight: 1.2 }}>
-                    {calibration.correlation.meanPredicted}
-                  </span>
-                </div>
-                <div style={styles.statCard}>
-                  <span style={{ color: colors.textSecondary, fontSize: 13 }}>Avg Actual</span>
-                  <span style={{ color: colors.green, fontSize: 28, fontWeight: 700, lineHeight: 1.2 }}>
-                    {calibration.correlation.meanOutcome}
-                  </span>
-                </div>
-                <div style={styles.statCard}>
-                  <span style={{ color: colors.textSecondary, fontSize: 13 }}>Bias</span>
-                  <span style={{
-                    color: Math.abs(calibration.correlation.bias) <= 5 ? colors.green
-                      : Math.abs(calibration.correlation.bias) <= 15 ? colors.yellow
-                      : colors.red,
-                    fontSize: 28, fontWeight: 700, lineHeight: 1.2,
-                  }}>
-                    {calibration.correlation.bias > 0 ? '+' : ''}{calibration.correlation.bias}
-                  </span>
-                </div>
-              </div>
-
-              {/* Interpretation */}
-              <div style={{
-                backgroundColor: colors.card,
-                border: `1px solid ${colors.border}`,
-                borderRadius: 8,
-                padding: '12px 16px',
-                marginBottom: 16,
-              }}>
-                <span style={{ color: colors.textSecondary, fontSize: 13 }}>
-                  {calibration.correlation.interpretation}
-                </span>
-                <span style={{ color: colors.textSecondary, fontSize: 13, display: 'block', marginTop: 4 }}>
-                  Bias: {calibration.correlation.biasLabel} ({calibration.dataPointCount} data points from {calibration.dataSources.trackedTweets} tracked + {calibration.dataSources.opsTweets} ops tweets)
-                </span>
-              </div>
-
-              {/* Delta distribution heatmap */}
-              <div style={{
-                backgroundColor: colors.card,
-                border: `1px solid ${colors.border}`,
-                borderRadius: 8,
-                padding: '16px',
-                marginBottom: 16,
-              }}>
-                <h3 style={{ fontSize: 14, fontWeight: 600, color: colors.textPrimary, margin: '0 0 12px 0' }}>
-                  Predicted vs Actual Score Distribution
-                </h3>
-                <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4 }}>
-                  {calibration.dataPoints.slice(0, 40).map((dp, i) => (
-                    <div
-                      key={i}
-                      title={`Predicted: ${dp.predictedScore} | Actual: ${dp.outcomeScore} | Delta: ${dp.delta > 0 ? '+' : ''}${dp.delta}`}
-                      style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: 4,
-                        backgroundColor: Math.abs(dp.delta) <= 10
-                          ? colors.green + '44'
-                          : Math.abs(dp.delta) <= 20
-                          ? colors.yellow + '44'
-                          : colors.red + '44',
-                        border: `1px solid ${
-                          Math.abs(dp.delta) <= 10 ? colors.green
-                          : Math.abs(dp.delta) <= 20 ? colors.yellow
-                          : colors.red
-                        }66`,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: 9,
-                        color: colors.textSecondary,
-                        cursor: 'default',
-                      }}
-                    >
-                      {dp.delta > 0 ? '+' : ''}{dp.delta}
-                    </div>
-                  ))}
-                </div>
-                <div style={{ marginTop: 8, display: 'flex', gap: 16, fontSize: 11, color: colors.textSecondary }}>
-                  <span>
-                    <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, backgroundColor: colors.green + '44', marginRight: 4, verticalAlign: 'middle' }} />
-                    Within 10
-                  </span>
-                  <span>
-                    <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, backgroundColor: colors.yellow + '44', marginRight: 4, verticalAlign: 'middle' }} />
-                    Within 20
-                  </span>
-                  <span>
-                    <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, backgroundColor: colors.red + '44', marginRight: 4, verticalAlign: 'middle' }} />
-                    Off by 20+
-                  </span>
-                </div>
-              </div>
-
-              {/* Top Predictive Rules */}
-              {calibration.topPredictiveRules.length > 0 && (
-                <div style={{ marginBottom: 16 }}>
-                  <h3 style={{ fontSize: 15, fontWeight: 600, color: colors.green, margin: '0 0 10px 0' }}>
-                    Top Predictive Rules (High Lift)
-                  </h3>
-                  <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
-                    {calibration.topPredictiveRules.map((rule) => (
-                      <div
-                        key={rule.ruleId}
-                        style={{
-                          backgroundColor: colors.card,
-                          border: `1px solid ${colors.border}`,
-                          borderRadius: 8,
-                          padding: '10px 16px',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                        }}
-                      >
-                        <div>
-                          <span style={{ color: colors.textPrimary, fontSize: 14 }}>
-                            {rule.ruleName}
-                          </span>
-                          <span style={{ color: colors.textSecondary, fontSize: 12, marginLeft: 8 }}>
-                            ({rule.category})
-                          </span>
-                        </div>
-                        <span style={{ color: colors.green, fontSize: 14, fontWeight: 600 }}>
-                          +{rule.lift} lift ({rule.timesTriggered}x)
-                          {rule.pValue !== null && rule.pValue < 0.05 ? ' *' : ''}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Top Noise Rules */}
-              {calibration.topNoiseRules.length > 0 && (
-                <div style={{ marginBottom: 16 }}>
-                  <h3 style={{ fontSize: 15, fontWeight: 600, color: colors.textSecondary, margin: '0 0 10px 0' }}>
-                    Noise Rules (No Real Impact)
-                  </h3>
-                  <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
-                    {calibration.topNoiseRules.map((rule) => (
-                      <div
-                        key={rule.ruleId}
-                        style={{
-                          backgroundColor: colors.card,
-                          border: `1px solid ${colors.border}`,
-                          borderRadius: 8,
-                          padding: '10px 16px',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          opacity: 0.7,
-                        }}
-                      >
-                        <span style={{ color: colors.textPrimary, fontSize: 14 }}>
-                          {rule.ruleName}
-                        </span>
-                        <span style={{ color: colors.textSecondary, fontSize: 14 }}>
-                          {rule.lift > 0 ? '+' : ''}{rule.lift} lift ({rule.timesTriggered}x)
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Top Harmful Rules */}
-              {calibration.topHarmfulRules.length > 0 && (
-                <div>
-                  <h3 style={{ fontSize: 15, fontWeight: 600, color: colors.red, margin: '0 0 10px 0' }}>
-                    Harmful Rules (Negative Lift)
-                  </h3>
-                  <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
-                    {calibration.topHarmfulRules.map((rule) => (
-                      <div
-                        key={rule.ruleId}
-                        style={{
-                          backgroundColor: colors.card,
-                          border: `1px solid ${colors.border}`,
-                          borderRadius: 8,
-                          padding: '10px 16px',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                        }}
-                      >
-                        <div>
-                          <span style={{ color: colors.textPrimary, fontSize: 14 }}>
-                            {rule.ruleName}
-                          </span>
-                          <span style={{ color: colors.textSecondary, fontSize: 12, marginLeft: 8 }}>
-                            ({rule.category})
-                          </span>
-                        </div>
-                        <span style={{ color: colors.red, fontSize: 14, fontWeight: 600 }}>
-                          {rule.lift} lift ({rule.timesTriggered}x)
-                          {rule.pValue !== null && rule.pValue < 0.05 ? ' *' : ''}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
-          ) : (
-            <div style={styles.emptyState}>
-              <p style={{ color: colors.textSecondary, margin: 0 }}>
-                {calibration?.message || 'Need at least 10 tweets with engagement metrics to generate calibration report.'}
-              </p>
-            </div>
-          )}
-        </section>
-        )}
-
-        {/* Optimal Posting Times — Weekly Heatmap */}
+        {/* Optimal Posting Times - Weekly Heatmap */}
         <section style={styles.section}>
           <h2 style={styles.sectionTitle}>Optimal Posting Times</h2>
           <p style={{ color: colors.textSecondary, margin: '0 0 16px 0', fontSize: 14 }}>
@@ -764,10 +361,11 @@ export default async function DashboardPage({
   );
 }
 
-// -- Data fetching --
+// -- Data fetching (filtered by userId) --
 
-async function fetchTweets() {
+async function fetchUserTweets(userId: string) {
   return prisma.trackedTweet.findMany({
+    where: { userId },
     include: {
       metrics: {
         orderBy: { measuredAt: 'desc' as const },
@@ -776,6 +374,14 @@ async function fetchTweets() {
     },
     orderBy: { postedAt: 'desc' as const },
     take: 20,
+  });
+}
+
+async function fetchUserAnalyses(userId: string) {
+  return prisma.analysis.findMany({
+    where: { userId },
+    orderBy: { createdAt: 'desc' as const },
+    take: 50,
   });
 }
 
@@ -818,7 +424,7 @@ function MetricPill({
 }) {
   return (
     <span style={styles.metricPill} title={label}>
-      <span style={{ fontSize: 13 }}>{icon}</span>
+      <span style={{ fontSize: 12, color: colors.textSecondary }}>{icon}</span>
       <span>{formatNumber(value)}</span>
     </span>
   );
@@ -1010,16 +616,6 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '2px 8px',
     letterSpacing: 1,
   },
-  adminBadge: {
-    fontSize: 11,
-    fontWeight: 700,
-    color: colors.red,
-    backgroundColor: colors.red + '18',
-    border: `1px solid ${colors.red}66`,
-    borderRadius: 4,
-    padding: '2px 8px',
-    letterSpacing: 1,
-  },
 
   // Main
   main: {
@@ -1033,7 +629,6 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexWrap: 'wrap' as const,
     gap: 16,
-    marginBottom: 32,
   },
   statCard: {
     flex: '1 1 200px',
@@ -1144,22 +739,7 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.5,
     whiteSpace: 'pre-wrap' as const,
   },
-  // Table
-  tableHeader: {
-    textAlign: 'left' as const,
-    padding: '10px 12px',
-    color: colors.textSecondary,
-    fontSize: 12,
-    fontWeight: 600,
-    textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
-  },
-  tableCell: {
-    padding: '10px 12px',
-    color: colors.textSecondary,
-    fontSize: 14,
-    verticalAlign: 'middle' as const,
-  },
+
   // Empty state
   emptyState: {
     backgroundColor: colors.card,

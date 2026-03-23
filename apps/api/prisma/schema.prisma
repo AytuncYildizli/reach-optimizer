@@ -28,11 +28,12 @@ model User {
   xProfileImage    String?          @map("x_profile_image")
   xAccessToken     String           @map("x_access_token")
   xRefreshToken    String?          @map("x_refresh_token")
-  subscriptionTier SubscriptionTier @default(free) @map("subscription_tier")
-  monthlyUsageCount Int             @default(0) @map("monthly_usage_count")
-  usageResetAt     DateTime         @default(now()) @map("usage_reset_at")
-  createdAt        DateTime         @default(now()) @map("created_at")
-  updatedAt        DateTime         @updatedAt @map("updated_at")
+  subscriptionTier    SubscriptionTier @default(free) @map("subscription_tier")
+  monthlyUsageCount   Int              @default(0) @map("monthly_usage_count")
+  usageResetAt        DateTime         @default(now()) @map("usage_reset_at")
+  personalizedWeights Json?            @map("personalized_weights")
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
 
   analyses      Analysis[]
   trackedTweets TrackedTweet[]
