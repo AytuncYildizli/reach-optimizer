@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ctaPresenceRule, questionTypeRule, bookmarkValueRule } from '../../rules/engagement-rules';
+import { ctaPresenceRule, bookmarkValueRule } from '../../rules/engagement-rules';
 import type { TweetInput } from '@reach/shared-types';
 
 const baseInput: TweetInput = {
@@ -18,32 +18,28 @@ describe('ctaPresenceRule', () => {
     const result = ctaPresenceRule.evaluate(input);
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(7);
+    expect(result.points).toBe(8);
     expect(result.severity).toBe('positive');
     expect(result.suggestion).toContain('Reply-triggering CTA detected');
   });
 
-  it('does not trigger on a plain statement without CTA', () => {
+  it('does not penalize when open loop is present', () => {
     const input: TweetInput = {
       ...baseInput,
-      text: 'I just shipped a new feature today and it feels great.',
+      text: "$47M ARR. 0 employees.\n\nHere's the entire playbook:",
     };
     const result = ctaPresenceRule.evaluate(input);
 
-    expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-4);
-    expect(result.severity).toBe('warning');
-    expect(result.suggestion).toContain('No call-to-action');
+    // Open loop neutralizes the CTA penalty
+    expect(result.points).toBeGreaterThanOrEqual(0);
   });
-});
 
-describe('questionTypeRule', () => {
   it('penalizes rhetorical questions', () => {
     const input: TweetInput = {
       ...baseInput,
       text: "Isn't it great that we can build anything these days, right?",
     };
-    const result = questionTypeRule.evaluate(input);
+    const result = ctaPresenceRule.evaluate(input);
 
     expect(result.triggered).toBe(true);
     expect(result.points).toBe(-3);
@@ -51,28 +47,17 @@ describe('questionTypeRule', () => {
     expect(result.suggestion).toContain('Rhetorical question');
   });
 
-  it('rewards answerable questions', () => {
+  it('penalizes plain statement without CTA', () => {
     const input: TweetInput = {
       ...baseInput,
-      text: 'What tools do you use for productivity?',
+      text: 'I just shipped a new feature today and it feels great.',
     };
-    const result = questionTypeRule.evaluate(input);
+    const result = ctaPresenceRule.evaluate(input);
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(4);
-    expect(result.severity).toBe('positive');
-    expect(result.suggestion).toContain('answerable question');
-  });
-
-  it('does not trigger when there is no question mark', () => {
-    const input: TweetInput = {
-      ...baseInput,
-      text: 'Just a statement about productivity tools.',
-    };
-    const result = questionTypeRule.evaluate(input);
-
-    expect(result.triggered).toBe(false);
-    expect(result.points).toBe(0);
+    expect(result.points).toBe(-6);
+    expect(result.severity).toBe('warning');
+    expect(result.suggestion).toContain('No call-to-action');
   });
 });
 
@@ -85,9 +70,20 @@ describe('bookmarkValueRule', () => {
     const result = bookmarkValueRule.evaluate(input);
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(5);
+    expect(result.points).toBe(8);
     expect(result.severity).toBe('positive');
     expect(result.suggestion).toContain('Bookmarkable content');
+  });
+
+  it('triggers on playbook/roadmap content', () => {
+    const input: TweetInput = {
+      ...baseInput,
+      text: "Here's the entire playbook for scaling your startup:",
+    };
+    const result = bookmarkValueRule.evaluate(input);
+
+    expect(result.triggered).toBe(true);
+    expect(result.points).toBe(8);
   });
 
   it('does not trigger on casual content', () => {

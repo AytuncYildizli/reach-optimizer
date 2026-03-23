@@ -22,11 +22,11 @@ describe('characterLengthRule', () => {
     });
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-2);
+    expect(result.points).toBe(-5);
     expect(result.severity).toBe('warning');
   });
 
-  it('gives bonus for optimal length (71-100 chars)', () => {
+  it('gives bonus for optimal length (71-110 chars)', () => {
     const text = 'A'.repeat(85);
     const result = characterLengthRule.evaluate({
       ...baseInput,
@@ -34,11 +34,44 @@ describe('characterLengthRule', () => {
     });
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(5);
+    expect(result.points).toBe(7);
     expect(result.severity).toBe('positive');
   });
 
-  it('penalizes text wall over 280 chars for non-thread', () => {
+  it('gives moderate bonus for 30-70 chars', () => {
+    const text = 'A'.repeat(50);
+    const result = characterLengthRule.evaluate({
+      ...baseInput,
+      text,
+    });
+
+    expect(result.triggered).toBe(true);
+    expect(result.points).toBe(2);
+  });
+
+  it('gives bonus for 111-200 chars', () => {
+    const text = 'A'.repeat(150);
+    const result = characterLengthRule.evaluate({
+      ...baseInput,
+      text,
+    });
+
+    expect(result.triggered).toBe(true);
+    expect(result.points).toBe(4);
+  });
+
+  it('gives small bonus for 201-280 chars', () => {
+    const text = 'A'.repeat(250);
+    const result = characterLengthRule.evaluate({
+      ...baseInput,
+      text,
+    });
+
+    expect(result.triggered).toBe(true);
+    expect(result.points).toBe(1);
+  });
+
+  it('penalizes text over 280 chars for non-thread', () => {
     const text = 'A'.repeat(300);
     const result = characterLengthRule.evaluate({
       ...baseInput,
@@ -46,12 +79,12 @@ describe('characterLengthRule', () => {
     });
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-4);
+    expect(result.points).toBe(-6);
     expect(result.severity).toBe('warning');
     expect(result.suggestion).toContain('thread');
   });
 
-  it('does not penalize text wall over 280 when isThread is true', () => {
+  it('does not penalize text over 280 when isThread is true', () => {
     const text = 'A'.repeat(300);
     const result = characterLengthRule.evaluate({
       ...baseInput,
@@ -60,7 +93,7 @@ describe('characterLengthRule', () => {
     });
 
     // Should not trigger the wall penalty; over 280 in a thread is fine
-    expect(result.points).not.toBe(-4);
+    expect(result.points).not.toBe(-6);
   });
 });
 
@@ -82,7 +115,7 @@ describe('hashtagCountRule', () => {
     });
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-4);
+    expect(result.points).toBe(-6);
     expect(result.severity).toBe('warning');
   });
 });
@@ -121,7 +154,7 @@ describe('threadLengthRule', () => {
     expect(result.points).toBe(0);
   });
 
-  it('gives bonus for 8 tweets (sweet spot)', () => {
+  it('gives bonus for 8 tweets (sweet spot 5-8)', () => {
     const result = threadLengthRule.evaluate({
       ...baseInput,
       text: 'Thread content',
@@ -130,11 +163,24 @@ describe('threadLengthRule', () => {
     });
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(5);
+    expect(result.points).toBe(6);
     expect(result.severity).toBe('positive');
   });
 
-  it('penalizes thread under 4 tweets', () => {
+  it('gives moderate bonus for 9-12 tweets', () => {
+    const result = threadLengthRule.evaluate({
+      ...baseInput,
+      text: 'Thread content',
+      isThread: true,
+      threadLength: 10,
+    });
+
+    expect(result.triggered).toBe(true);
+    expect(result.points).toBe(3);
+    expect(result.severity).toBe('positive');
+  });
+
+  it('neutral for 3-4 tweets', () => {
     const result = threadLengthRule.evaluate({
       ...baseInput,
       text: 'Short thread',
@@ -143,7 +189,19 @@ describe('threadLengthRule', () => {
     });
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-3);
+    expect(result.points).toBe(0);
+  });
+
+  it('penalizes thread under 3 tweets', () => {
+    const result = threadLengthRule.evaluate({
+      ...baseInput,
+      text: 'Very short thread',
+      isThread: true,
+      threadLength: 2,
+    });
+
+    expect(result.triggered).toBe(true);
+    expect(result.points).toBe(-4);
     expect(result.severity).toBe('warning');
   });
 
@@ -156,7 +214,7 @@ describe('threadLengthRule', () => {
     });
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-2);
+    expect(result.points).toBe(-3);
     expect(result.severity).toBe('warning');
   });
 });

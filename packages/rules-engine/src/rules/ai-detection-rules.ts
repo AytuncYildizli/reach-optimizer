@@ -1,7 +1,12 @@
 import type { RuleDefinition, TweetInput, RuleResult } from '@reach/shared-types';
 
+// Expanded AI slop words — frequency multipliers from research (vs human text)
+// delve=48x, tapestry=35x, "it's worth noting"=31x, multifaceted=28x, etc.
 const AI_SLOP_WORDS =
-  /\b(delve|tapestry|landscape|labyrinth|crucible|beacon|embark|unveil|leverage|synergy|holistic|paramount|endeavor|utilize|facilitate|aforementioned|henceforth|comprehensive|multifaceted|paradigm)\b/gi;
+  /\b(delve|tapestry|landscape|labyrinth|crucible|beacon|embark|unveil|leverage|synergy|holistic|paramount|endeavor|utilize|facilitate|aforementioned|henceforth|comprehensive|multifaceted|paradigm|ever-evolving|realm|harness|vibrant|robust|compelling|navigate|crucial)\b/gi;
+
+const AI_SLOP_PHRASES =
+  /it's worth noting|in today's digital age|in the realm of|at the end of the day|it goes without saying|dive (deep )?into/gi;
 
 export const aiSlopWordsRule: RuleDefinition = {
   id: 'penalty-ai-slop-words',
@@ -9,16 +14,19 @@ export const aiSlopWordsRule: RuleDefinition = {
   category: 'penalty',
   runOn: 'client',
   evaluate: (input: TweetInput): RuleResult => {
-    const matches = input.text.match(AI_SLOP_WORDS);
-    const count = matches ? matches.length : 0;
+    const wordMatches = input.text.match(AI_SLOP_WORDS);
+    const phraseMatches = input.text.match(AI_SLOP_PHRASES);
+    const wordCount = wordMatches ? wordMatches.length : 0;
+    const phraseCount = phraseMatches ? phraseMatches.length : 0;
+    const count = wordCount + phraseCount;
 
     if (count >= 4) {
       return {
         ruleId: 'penalty-ai-slop-words',
         triggered: true,
-        points: -10,
+        points: -14,
         severity: 'critical',
-        suggestion: `AI writing patterns detected (${count} markers). Rewrite in your natural voice.`,
+        suggestion: `Heavy AI writing patterns detected (${count} markers). Rewrite in your natural voice — AI text kills engagement velocity.`,
       };
     }
 
@@ -26,7 +34,7 @@ export const aiSlopWordsRule: RuleDefinition = {
       return {
         ruleId: 'penalty-ai-slop-words',
         triggered: true,
-        points: -5,
+        points: -7,
         severity: 'warning',
         suggestion: `AI writing patterns detected (${count} markers). Rewrite in your natural voice.`,
       };
@@ -99,10 +107,10 @@ export const staleFormulaRule: RuleDefinition = {
       return {
         ruleId: 'penalty-stale-formula',
         triggered: true,
-        points: -3,
+        points: -5,
         severity: 'warning',
         suggestion:
-          'Overused formula detected. These patterns are now penalized by the algorithm.',
+          'Overused formula — these patterns now signal low quality. Find a fresh hook.',
       };
     }
 
@@ -128,10 +136,10 @@ export const hedgingOpenerRule: RuleDefinition = {
       return {
         ruleId: 'penalty-hedging-opener',
         triggered: true,
-        points: -3,
+        points: -5,
         severity: 'warning',
         suggestion:
-          'Hedging opener weakens your hook. State your claim boldly.',
+          'Hedging opener weakens your hook. State your claim boldly — bold claims get 2x engagement.',
       };
     }
 

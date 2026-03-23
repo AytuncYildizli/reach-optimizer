@@ -11,14 +11,14 @@ const engine = new ScoreEngine(allClientRules);
 // Track which tweets we've already scored (by element reference)
 const scoredTweets = new WeakSet<HTMLElement>();
 
-// X-Ray uses tighter tiers so differences are visible in timeline
+// X-Ray tiers aligned with v3.0 weights (baseScore 30, wider distribution)
 const XRAY_TIERS = [
-  { max: 35, label: "weak", color: "#f4212e" },    // red
-  { max: 45, label: "meh", color: "#ff6f00" },      // orange
-  { max: 52, label: "avg", color: "#ffd400" },       // yellow
-  { max: 60, label: "solid", color: "#00ba7c" },     // green
-  { max: 75, label: "strong", color: "#1d9bf0" },    // blue
-  { max: 100, label: "fire", color: "#b45bff" },     // purple
+  { max: 20, label: "weak", color: "#f4212e" },    // red — don't post
+  { max: 35, label: "meh", color: "#ff6f00" },      // orange — below average
+  { max: 50, label: "avg", color: "#ffd400" },       // yellow — average
+  { max: 65, label: "solid", color: "#00ba7c" },     // green — solid
+  { max: 79, label: "strong", color: "#1d9bf0" },    // blue — strong
+  { max: 100, label: "fire", color: "#b45bff" },     // purple — exceptional
 ];
 
 function getXrayTier(score: number) {

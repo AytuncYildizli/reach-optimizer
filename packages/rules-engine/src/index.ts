@@ -13,10 +13,10 @@ export {
   hashtagCountRule,
   emojiCountRule,
   threadLengthRule,
+  lineBreaksRule,
 } from './rules/structure-rules';
 export {
   ctaPresenceRule,
-  questionTypeRule,
   bookmarkValueRule,
 } from './rules/engagement-rules';
 export {
@@ -33,13 +33,17 @@ export {
   openLoopRule,
   contrarianClaimRule,
   storyOpenerRule,
+  patternInterruptRule,
+  boldClaimRule,
+  listPromiseRule,
+  compoundHookRule,
 } from './rules/advanced-hook-rules';
 export {
   choiceQuestionRule,
-  directAddressRule,
   deadEndingRule,
   combativeToneRule,
-  specificNumberRule,
   mediaPresenceRule,
   grammarCheckRule,
+  hashtagPlacementRule,
+  allCapsSpamRule,
 } from './rules/reply-potential-rules';

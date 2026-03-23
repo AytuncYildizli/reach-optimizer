@@ -30,7 +30,7 @@ describe('aiSlopWordsRule', () => {
       text: 'We must delve into the tapestry of modern tech to understand growth.',
     });
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-5);
+    expect(result.points).toBe(-7);
     expect(result.severity).toBe('warning');
     expect(result.suggestion).toContain('AI writing patterns detected');
   });
@@ -41,7 +41,7 @@ describe('aiSlopWordsRule', () => {
       text: 'We must delve into the tapestry of this landscape and leverage our paradigm for synergy.',
     });
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-10);
+    expect(result.points).toBe(-14);
     expect(result.severity).toBe('critical');
   });
 
@@ -101,7 +101,7 @@ describe('staleFormulaRule', () => {
       text: 'Unpopular opinion: TypeScript is overrated.',
     });
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-3);
+    expect(result.points).toBe(-5);
     expect(result.suggestion).toContain('Overused formula');
   });
 
@@ -111,7 +111,7 @@ describe('staleFormulaRule', () => {
       text: 'Read that again. Let it sink in.',
     });
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-3);
+    expect(result.points).toBe(-5);
   });
 
   it('triggers on "Let that sink in"', () => {
@@ -120,7 +120,7 @@ describe('staleFormulaRule', () => {
       text: 'Let that sink in for a moment.',
     });
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-3);
+    expect(result.points).toBe(-5);
   });
 
   it('does not trigger on original content', () => {
@@ -140,7 +140,7 @@ describe('hedgingOpenerRule', () => {
       text: 'I think maybe we should reconsider our approach to content.',
     });
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-3);
+    expect(result.points).toBe(-5);
     expect(result.suggestion).toContain('Hedging opener');
   });
 
@@ -150,7 +150,7 @@ describe('hedgingOpenerRule', () => {
       text: 'Not sure if this is the right take but here goes.',
     });
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-3);
+    expect(result.points).toBe(-5);
   });
 
   it('triggers on "Honestly,"', () => {
@@ -159,7 +159,7 @@ describe('hedgingOpenerRule', () => {
       text: 'Honestly, I have no idea why people keep doing this.',
     });
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-3);
+    expect(result.points).toBe(-5);
   });
 
   it('does not trigger on bold opening', () => {

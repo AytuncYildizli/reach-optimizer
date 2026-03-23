@@ -12,27 +12,46 @@ export const characterLengthRule: RuleDefinition = {
       return {
         ruleId: 'structure-char-length',
         triggered: true,
-        points: -2,
+        points: -5,
         severity: 'warning',
         suggestion: 'Too short — add more context or detail',
       };
     }
 
-    if (len >= 71 && len <= 100) {
-      return {
-        ruleId: 'structure-char-length',
-        triggered: true,
-        points: 5,
-        severity: 'positive',
-        suggestion: 'Optimal tweet length for single tweets',
-      };
-    }
-
-    if (len >= 101 && len <= 280) {
+    if (len >= 30 && len <= 70) {
       return {
         ruleId: 'structure-char-length',
         triggered: true,
         points: 2,
+        severity: 'info',
+      };
+    }
+
+    if (len >= 71 && len <= 110) {
+      return {
+        ruleId: 'structure-char-length',
+        triggered: true,
+        points: 7,
+        severity: 'positive',
+        suggestion: 'Optimal tweet length — 71-110 chars gets 17% higher engagement',
+      };
+    }
+
+    if (len >= 111 && len <= 200) {
+      return {
+        ruleId: 'structure-char-length',
+        triggered: true,
+        points: 4,
+        severity: 'positive',
+        suggestion: 'Good length for content with context',
+      };
+    }
+
+    if (len >= 201 && len <= 280) {
+      return {
+        ruleId: 'structure-char-length',
+        triggered: true,
+        points: 1,
         severity: 'info',
       };
     }
@@ -42,11 +61,11 @@ export const characterLengthRule: RuleDefinition = {
       return {
         ruleId: 'structure-char-length',
         triggered: true,
-        points: input.hasMedia ? -1 : -4,
+        points: input.hasMedia ? -2 : -6,
         severity: input.hasMedia ? 'info' : 'warning',
         suggestion: input.hasMedia
           ? 'Long text with media — generally fine'
-          : 'Text wall — consider breaking into a thread',
+          : '"See more" truncation kills 40-60% of engagement — break into a thread',
       };
     }
 
@@ -74,10 +93,10 @@ export const hashtagCountRule: RuleDefinition = {
       return {
         ruleId: 'penalty-hashtag-spam',
         triggered: true,
-        points: -4,
+        points: -6,
         severity: 'warning',
         suggestion:
-          'Too many hashtags. Max 2, placed mid-content. Over 3 can reduce reach.',
+          'Too many hashtags — 3+ hashtags reduce engagement by ~40%. Use 1-2 max.',
       };
     }
 
@@ -139,42 +158,96 @@ export const threadLengthRule: RuleDefinition = {
 
     const len = input.threadLength;
 
-    if (len >= 7 && len <= 12) {
+    if (len >= 5 && len <= 8) {
       return {
         ruleId: 'structure-thread-length',
         triggered: true,
-        points: 5,
+        points: 6,
         severity: 'positive',
-        suggestion: 'Thread length in sweet spot (7-12 tweets)',
+        suggestion: 'Thread length in sweet spot (5-8 tweets) — 2.4x engagement',
       };
     }
 
-    if (len < 4) {
+    if (len >= 9 && len <= 12) {
       return {
         ruleId: 'structure-thread-length',
         triggered: true,
-        points: -3,
+        points: 3,
+        severity: 'positive',
+        suggestion: 'Good thread length',
+      };
+    }
+
+    if (len >= 3 && len <= 4) {
+      return {
+        ruleId: 'structure-thread-length',
+        triggered: true,
+        points: 0,
+        severity: 'info',
+      };
+    }
+
+    if (len < 3) {
+      return {
+        ruleId: 'structure-thread-length',
+        triggered: true,
+        points: -4,
         severity: 'warning',
         suggestion:
           'Thread too short — consider expanding or posting as single tweet',
       };
     }
 
-    if (len > 15) {
+    if (len >= 13 && len <= 15) {
       return {
         ruleId: 'structure-thread-length',
         triggered: true,
-        points: -2,
-        severity: 'warning',
-        suggestion:
-          'Thread too long — consider splitting into multiple threads',
+        points: -1,
+        severity: 'info',
       };
     }
 
-    // 4-6 or 13-15: acceptable
+    // >15
     return {
       ruleId: 'structure-thread-length',
       triggered: true,
+      points: -3,
+      severity: 'warning',
+      suggestion:
+        'Thread too long — consider splitting into multiple threads',
+    };
+  },
+};
+
+// NEW: Line Breaks Rule — rewards Twitter-native formatting
+export const lineBreaksRule: RuleDefinition = {
+  id: 'structure-line-breaks',
+  name: 'Line Break Formatting',
+  category: 'structure',
+  runOn: 'client',
+  evaluate: (input: TweetInput): RuleResult => {
+    const text = input.text;
+
+    // Only relevant for longer content
+    if (text.length < 100) {
+      return { ruleId: 'structure-line-breaks', triggered: false, points: 0, severity: 'info' };
+    }
+
+    const hasLineBreaks = text.includes('\n');
+
+    if (hasLineBreaks) {
+      return {
+        ruleId: 'structure-line-breaks',
+        triggered: true,
+        points: 5,
+        severity: 'positive',
+        suggestion: 'Good formatting — line breaks boost readability by 20-30%',
+      };
+    }
+
+    return {
+      ruleId: 'structure-line-breaks',
+      triggered: false,
       points: 0,
       severity: 'info',
     };
