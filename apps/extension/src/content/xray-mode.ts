@@ -8,8 +8,11 @@ import type { TweetInput } from "@reach/shared-types";
 
 const engine = new ScoreEngine(allClientRules);
 
-// Track which tweets we've already scored (by element reference)
+// Track which tweet elements we've already injected pills into
 const scoredTweets = new WeakSet<HTMLElement>();
+
+// Text-based score cache — same text always gets the same score (deterministic)
+const scoreCache = new Map<string, { score: number; tier: string }>();
 
 // X-Ray tiers aligned with v3.0 weights (baseScore 30, wider distribution)
 const XRAY_TIERS = [
@@ -128,15 +131,23 @@ function scoreTweet(tweetEl: HTMLElement): void {
   if (!text) return;
 
   const hasMedia = tweetHasMedia(tweetEl);
+  const cacheKey = text + (hasMedia ? '|M' : '|T');
 
-  const input: TweetInput = {
-    text,
-    platform: "x",
-    isThread: false,
-    hasMedia,
-  };
-
-  const result = engine.evaluate(input);
+  // Use cached score if available — guarantees deterministic scoring
+  let result;
+  const cached = scoreCache.get(cacheKey);
+  if (cached) {
+    result = { reachScore: cached.score, tier: cached.tier, breakdown: {} as never, suggestions: [] as never[] };
+  } else {
+    const input: TweetInput = {
+      text,
+      platform: "x",
+      isThread: false,
+      hasMedia,
+    };
+    result = engine.evaluate(input);
+    scoreCache.set(cacheKey, { score: result.reachScore, tier: result.tier });
+  }
 
   // Find the action bar (like/retweet/reply buttons row)
   const actionBar =

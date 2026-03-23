@@ -142,8 +142,9 @@ export const mediaPresenceRule: RuleDefinition = {
 
 // Common grammar/typo patterns that hurt credibility on X
 // Algorithm gives 0.01x (99% reduction) for unknown language/misspellings
+// No /g flag — .test() with /g advances lastIndex causing non-deterministic scoring
 const GRAMMAR_PATTERNS: { pattern: RegExp; fix: string; label: string }[] = [
-  { pattern: /\bi (am|was|have|had|will|would|can|could|should|want|need|think|know|like|love|hate|did|do)\b/g, fix: "I", label: "lowercase 'i'" },
+  { pattern: /\bi (am|was|have|had|will|would|can|could|should|want|need|think|know|like|love|hate|did|do)\b/i, fix: "I", label: "lowercase 'i'" },
   { pattern: /\byou're\s+(a\s+)?(right|wrong|correct|the\s+best)/i, fix: "", label: "" }, // valid usage, skip
   { pattern: /\byour\s+(a\s+|going|welcome|the\s+one\s+who|doing|right|wrong)/i, fix: "you're", label: "your → you're" },
   { pattern: /\byou're\s+(own|company|team|product|app|site|tool|brand|business|account)/i, fix: "your", label: "you're → your" },
@@ -172,7 +173,6 @@ export const grammarCheckRule: RuleDefinition = {
 
     for (const { pattern, label } of GRAMMAR_PATTERNS) {
       if (!label) continue; // skip valid-usage patterns
-      pattern.lastIndex = 0;
       if (pattern.test(text)) {
         issues.push(label);
       }

@@ -1,6 +1,6 @@
 import type { RuleDefinition, TweetInput, RuleResult } from '@reach/shared-types';
 
-const LINK_REGEX = /https?:\/\/[^\s]+|www\.[^\s]+/gi;
+const LINK_REGEX = /https?:\/\/[^\s]+|www\.[^\s]+/i;
 
 export const linkDetectionRule: RuleDefinition = {
   id: 'penalty-link-external',
@@ -9,8 +9,6 @@ export const linkDetectionRule: RuleDefinition = {
   runOn: 'client',
   evaluate: (input: TweetInput): RuleResult => {
     const match = LINK_REGEX.exec(input.text);
-    // Reset lastIndex for global regex
-    LINK_REGEX.lastIndex = 0;
 
     if (!match) {
       return {
