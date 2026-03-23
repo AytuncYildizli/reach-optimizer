@@ -1,7 +1,7 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  distDir: process.env.VERCEL ? '../../.next' : '.next',
+  // Root Directory set to apps/api in Vercel — no distDir hack needed
   serverExternalPackages: ['pg'],
   transpilePackages: [
     '@reach/shared-types',

@@ -1,8 +1,7 @@
 {
   "framework": "nextjs",
-  "installCommand": "corepack enable && pnpm install",
-  "buildCommand": "pnpm turbo run build --filter=@reach/api",
-  "outputDirectory": ".next",
+  "installCommand": "cd ../.. && corepack enable && pnpm install",
+  "buildCommand": "npx prisma generate && npx next build",
   "crons": [
     {
       "path": "/api/cron/fetch-metrics",
