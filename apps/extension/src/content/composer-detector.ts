@@ -1,6 +1,9 @@
 /**
  * ComposerDetector — watches X.com's DOM for the tweet composer and
  * forwards text changes to a callback with a 300 ms debounce.
+ *
+ * Also watches the composer's parent container for media additions
+ * (images, videos, GIFs) which don't trigger text change events.
  */
 
 const COMPOSER_SELECTORS = [
@@ -13,6 +16,7 @@ export class ComposerDetector {
   private onTextChange: (composerEl: HTMLElement, text: string) => void;
   private bodyObserver: MutationObserver | null = null;
   private composerObserver: MutationObserver | null = null;
+  private mediaObserver: MutationObserver | null = null;
   private currentComposer: HTMLElement | null = null;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -40,6 +44,8 @@ export class ComposerDetector {
     this.bodyObserver = null;
     this.composerObserver?.disconnect();
     this.composerObserver = null;
+    this.mediaObserver?.disconnect();
+    this.mediaObserver = null;
     this.currentComposer = null;
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
@@ -59,11 +65,12 @@ export class ComposerDetector {
 
     console.log('[ReachOS] Composer detected');
 
-    // Tear down previous composer listener
+    // Tear down previous listeners
     this.composerObserver?.disconnect();
+    this.mediaObserver?.disconnect();
     this.currentComposer = composer;
 
-    // Set up inner MutationObserver on the composer element
+    // Set up inner MutationObserver on the composer element (text changes)
     this.composerObserver = new MutationObserver(() => {
       this.handleTextChange();
     });
@@ -73,6 +80,68 @@ export class ComposerDetector {
       childList: true,
       subtree: true,
     });
+
+    // Also watch the composer's parent container for media additions.
+    // When a user adds an image/video/GIF, the DOM changes happen OUTSIDE
+    // the text area (in the parent form/dialog), so we need a separate observer.
+    const composerContainer =
+      composer.closest('[data-testid="tweetButtonInline"]')?.parentElement
+      || composer.closest('[role="dialog"]')
+      || composer.closest('form')
+      || (() => {
+        // Walk up ~10 levels to find a reasonable container
+        let el: HTMLElement | null = composer as HTMLElement;
+        for (let i = 0; i < 10 && el; i++) el = el.parentElement;
+        return el;
+      })();
+
+    if (composerContainer && composerContainer !== composer) {
+      this.mediaObserver = new MutationObserver((mutations) => {
+        // Only re-trigger if media-related elements were added/removed
+        const hasMediaChange = mutations.some((m) => {
+          if (m.type !== 'childList') return false;
+          // Check added nodes for media indicators
+          for (const node of m.addedNodes) {
+            if (node instanceof HTMLElement) {
+              if (
+                node.querySelector?.('img') ||
+                node.querySelector?.('video') ||
+                node.querySelector?.('[data-testid="attachments"]') ||
+                node.querySelector?.('[data-testid="tweetPhoto"]') ||
+                node.tagName === 'IMG' ||
+                node.tagName === 'VIDEO'
+              ) {
+                return true;
+              }
+            }
+          }
+          // Check removed nodes (media removed)
+          for (const node of m.removedNodes) {
+            if (node instanceof HTMLElement) {
+              if (
+                node.querySelector?.('img') ||
+                node.querySelector?.('video') ||
+                node.tagName === 'IMG' ||
+                node.tagName === 'VIDEO'
+              ) {
+                return true;
+              }
+            }
+          }
+          return false;
+        });
+
+        if (hasMediaChange) {
+          console.log('[ReachOS] Media change detected in composer container');
+          this.handleTextChange();
+        }
+      });
+
+      this.mediaObserver.observe(composerContainer, {
+        childList: true,
+        subtree: true,
+      });
+    }
 
     // Also listen for input events (covers IME, paste, etc.)
     composer.addEventListener('input', () => {
