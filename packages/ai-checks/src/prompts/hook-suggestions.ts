@@ -1,7 +1,7 @@
 import { detectLanguage, getLanguageInstruction } from '../language-detect';
 
-export function buildHookSuggestionsPrompt(text: string) {
-  const lang = detectLanguage(text);
+export function buildHookSuggestionsPrompt(text: string, overrideLang?: 'tr' | 'en') {
+  const lang = overrideLang || detectLanguage(text);
   const langInstruction = getLanguageInstruction(lang);
 
   return {

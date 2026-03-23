@@ -53,8 +53,8 @@ export class AIAnalyzer {
     return parseClaudeJSON<HookQualityResult>(response);
   }
 
-  async generateHookSuggestions(text: string): Promise<string[]> {
-    const prompt = buildHookSuggestionsPrompt(text);
+  async generateHookSuggestions(text: string, lang?: 'tr' | 'en'): Promise<string[]> {
+    const prompt = buildHookSuggestionsPrompt(text, lang);
 
     // Use fetch directly (SDK has connection issues on Vercel serverless)
     try {

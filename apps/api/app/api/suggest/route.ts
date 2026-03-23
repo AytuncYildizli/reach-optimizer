@@ -107,8 +107,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, suggestions });
     }
 
+    const lang = detectLanguage(body.content);
     const analyzer = new AIAnalyzer(env.ANTHROPIC_API_KEY);
-    const suggestions = await analyzer.generateHookSuggestions(body.content);
+    const suggestions = await analyzer.generateHookSuggestions(body.content, lang);
 
     return NextResponse.json({ success: true, suggestions, debug: { count: suggestions.length, apiKeyPrefix: env.ANTHROPIC_API_KEY.substring(0, 10) + '...' } });
   } catch (error) {
