@@ -46,6 +46,36 @@ export interface SuggestResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Account Health
+// ---------------------------------------------------------------------------
+
+export interface AccountHealthFactor {
+  name: string;
+  score: number;       // points contributed
+  maxScore: number;    // max possible for this factor
+  status: 'great' | 'good' | 'warning' | 'critical';
+  tip?: string;        // actionable tip for improvement
+}
+
+export interface AccountHealth {
+  healthScore: number;           // 0-100
+  reachMultiplier: number;       // 0.6-1.3
+  factors: AccountHealthFactor[];
+  isPremium: boolean;
+  followerCount: number;
+  followingCount: number;
+  tweetCount: number;
+  accountAgeDays: number;
+  avgEngagementRate: number | null;  // from tracked tweets, null if no data
+  fetchedAt: string;                  // ISO timestamp
+}
+
+export interface AccountHealthResponse {
+  success: true;
+  data: AccountHealth;
+}
+
+// ---------------------------------------------------------------------------
 // Timing Optimizer
 // ---------------------------------------------------------------------------
 

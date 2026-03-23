@@ -328,6 +328,29 @@ function AnimatedScore({ value, tier }: { value: number; tier: string }) {
 function ScoreCircle({ score, tier }: { score: number; tier: ScoreTier }) {
   const color = TIER_COLORS[tier];
   const angle = (score / 100) * 360;
+  const [reachMultiplier, setReachMultiplier] = useState<number | null>(null);
+  const [accountHealth, setAccountHealth] = useState<number | null>(null);
+
+  useEffect(() => {
+    // Read cached account health from chrome.storage
+    try {
+      chrome.storage.local.get(['accountHealth'], (result) => {
+        if (result.accountHealth) {
+          const data = result.accountHealth;
+          // Check if cache is fresh (< 1 hour)
+          const age = Date.now() - new Date(data.fetchedAt).getTime();
+          if (age < 3600000) {
+            setReachMultiplier(data.reachMultiplier);
+            setAccountHealth(data.healthScore);
+          }
+        }
+      });
+    } catch { /* extension context might not be available */ }
+  }, []);
+
+  const estimatedReach = reachMultiplier
+    ? Math.round(score * reachMultiplier)
+    : null;
 
   const gradientStyle = {
     background: `conic-gradient(${color} 0deg, ${color} ${angle}deg, #2f3336 ${angle}deg)`,
@@ -346,6 +369,14 @@ function ScoreCircle({ score, tier }: { score: number; tier: ScoreTier }) {
       <div className={`reachos-tier-label color-${tier}`}>
         {TIER_LABELS[tier]}
       </div>
+      {estimatedReach !== null && estimatedReach !== score && (
+        <div className="reachos-estimated-reach" title={`Account Health: ${accountHealth}/100 | Multiplier: ${reachMultiplier}x`}>
+          Est. Reach: {Math.min(100, estimatedReach)}
+          <span className="reachos-multiplier-badge">
+            {reachMultiplier !== null && reachMultiplier >= 1 ? '+' : ''}{reachMultiplier !== null ? Math.round((reachMultiplier - 1) * 100) : 0}%
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -368,19 +399,20 @@ function getBarColor(percentage: number): string {
 }
 
 function buildBreakdownEntries(breakdown: ScoreBreakdown): BreakdownEntry[] {
-  const hookPct = (breakdown.hook / 25) * 100;
+  // v3.0 category caps: hook:30, structure:20, engagement:30, penalty:-55, bonus:15
+  const hookPct = (breakdown.hook / 30) * 100;
   const structPct = (breakdown.structure / 20) * 100;
-  const engPct = (breakdown.engagement / 20) * 100;
+  const engPct = (breakdown.engagement / 30) * 100;
   const penaltyAbs = Math.abs(breakdown.penalties);
-  const penaltyPct = (penaltyAbs / 30) * 100;
-  const bonusPct = (breakdown.bonuses / 20) * 100;
+  const penaltyPct = (penaltyAbs / 55) * 100;
+  const bonusPct = (breakdown.bonuses / 15) * 100;
 
   return [
-    { label: t('hook'), key: "hook", value: breakdown.hook, max: 25, color: getBarColor(hookPct) },
+    { label: t('hook'), key: "hook", value: breakdown.hook, max: 30, color: getBarColor(hookPct) },
     { label: t('structure'), key: "structure", value: breakdown.structure, max: 20, color: getBarColor(structPct) },
-    { label: t('engagement'), key: "engagement", value: breakdown.engagement, max: 20, color: getBarColor(engPct) },
-    { label: t('penalties'), key: "penalties", value: breakdown.penalties, max: 30, color: "#f4212e" },
-    { label: t('bonuses'), key: "bonuses", value: breakdown.bonuses, max: 20, color: "#00ba7c" },
+    { label: t('engagement'), key: "engagement", value: breakdown.engagement, max: 30, color: getBarColor(engPct) },
+    { label: t('penalties'), key: "penalties", value: breakdown.penalties, max: 55, color: "#f4212e" },
+    { label: t('bonuses'), key: "bonuses", value: breakdown.bonuses, max: 15, color: "#00ba7c" },
   ].map((entry) => ({
     ...entry,
     // For penalties, use abs for the bar width percentage

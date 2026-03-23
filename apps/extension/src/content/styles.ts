@@ -129,6 +129,23 @@ export const OVERLAY_STYLES = `
   font-weight: 600;
   transition: color 0.3s ease;
 }
+.reachos-estimated-reach {
+  font-size: 11px;
+  color: #8b949e;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: help;
+}
+.reachos-multiplier-badge {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  font-weight: 600;
+  background: rgba(29, 155, 240, 0.15);
+  color: #1d9bf0;
+}
 
 /* Color classes */
 .color-critical { color: #f4212e; }
