@@ -162,44 +162,95 @@ function onComposerTextChange(_composerEl: HTMLElement, text: string): void {
     return;
   }
 
-  // 1. Detect media attachments — find the composer's parent container and check for media inside it
+  // 1. Detect media — multiple strategies for robustness against X.com DOM changes
   const hasMedia = (() => {
-    // Strategy: find the composer element, walk up to find the compose container, check for media inside
-    const composer = document.querySelector('[data-testid="tweetTextarea_0"]');
-    if (!composer) return false;
+    try {
+      // Find the composer container first (scope all checks to this)
+      const composer = document.querySelector('[data-testid="tweetTextarea_0"]');
+      const composerContainer = composer?.closest('[data-testid="tweetButtonInline"]')?.parentElement
+        || composer?.closest('[role="dialog"]')
+        || composer?.closest('[data-testid="primaryColumn"]')
+        || composer?.closest('form')
+        || (() => {
+          // Walk up from composer to find a reasonable container
+          let el: HTMLElement | null = composer as HTMLElement;
+          for (let i = 0; i < 15 && el; i++) el = el.parentElement;
+          return el;
+        })();
 
-    // Walk up to the closest large container (the compose form/dialog)
-    const container = composer.closest('[role="dialog"]')
-      || composer.closest('[data-testid="primaryColumn"]')
-      || composer.parentElement?.parentElement?.parentElement?.parentElement?.parentElement;
+      if (!composerContainer) return false;
 
-    if (!container) return false;
+      // Strategy 1: Check for media-related data-testid attributes
+      const mediaTestIds = [
+        '[data-testid="attachments"]',
+        '[data-testid="tweetPhoto"]',
+        '[data-testid="videoComponent"]',
+        '[data-testid="tweetMediaImage"]',
+        '[data-testid="gifPreview"]',
+      ];
+      for (const sel of mediaTestIds) {
+        if (composerContainer.querySelector(sel)) return true;
+      }
 
-    // Check for any media indicators inside the compose container
-    return !!(
-      container.querySelector('[data-testid="attachments"]') ||
-      container.querySelector('[data-testid="removeMedia"]') ||
-      container.querySelector('[aria-label="Remove media"]') ||
-      container.querySelector('[aria-label="Remove"]') ||
-      container.querySelector('img[src*="pbs.twimg"]') ||
-      container.querySelector('img[src*="ton.twimg"]') ||
-      container.querySelector('video') ||
-      container.querySelector('[data-testid="videoPlayer"]') ||
-      container.querySelector('[data-testid="tweetPhoto"]') ||
-      // X.com shows media thumbnails as small img elements inside the composer area
-      container.querySelectorAll('img[draggable="true"]').length > 0 ||
-      // Check for the media upload progress/preview area (usually a div with images below the textarea)
-      (() => {
-        const imgs = container.querySelectorAll('img');
-        // If there are images that are NOT avatars (avatars are typically 40x40 or circular)
-        for (const img of imgs) {
-          const w = img.width || img.naturalWidth;
-          if (w > 60) return true; // Likely a media preview, not an avatar
+      // Strategy 2: aria-label patterns for remove/edit media buttons
+      const ariaPatterns = [
+        '[aria-label="Remove media"]',
+        '[aria-label="Remove"]',
+        '[aria-label="Close media"]',
+        '[aria-label*="Remove"]',
+        '[aria-label*="Edit media"]',
+        '[data-testid="removeMedia"]',
+      ];
+      for (const sel of ariaPatterns) {
+        if (composerContainer.querySelector(sel)) return true;
+      }
+
+      // Strategy 3: Check for "Edit" or "Alt" text buttons (image alt-text or crop)
+      const buttons = composerContainer.querySelectorAll('button');
+      for (const btn of buttons) {
+        const txt = btn.textContent?.trim();
+        if (txt === 'Edit' || txt === 'Alt' || txt === 'Düzenle' || txt === 'Kaldır') {
+          return true;
         }
-        return false;
-      })()
-    );
+      }
+
+      // Strategy 4: Look for any large image (not an avatar or emoji)
+      const imgs = composerContainer.querySelectorAll('img');
+      for (const img of imgs) {
+        const rect = img.getBoundingClientRect();
+        // Media previews are typically 100+ px wide, avatars ~40px
+        if (rect.width > 80 && rect.height > 60) {
+          // Exclude emoji images (usually 18-24px) and profile pics
+          const src = img.getAttribute('src') || '';
+          if (!src.includes('emoji') && !src.includes('profile_images') && !src.includes('pbs.twimg.com/profile')) {
+            return true;
+          }
+        }
+      }
+
+      // Strategy 5: Check for video elements
+      if (composerContainer.querySelector('video')) return true;
+
+      // Strategy 6: Check for a thumbnail container (GIF/video preview wrapper)
+      // X.com wraps media previews in a div with specific aspect ratio styles
+      const mediaWrappers = composerContainer.querySelectorAll('[style*="padding-bottom"]');
+      for (const wrapper of mediaWrappers) {
+        const style = (wrapper as HTMLElement).style.paddingBottom;
+        // Media wrappers have percentage-based padding (e.g. "56.25%" for 16:9)
+        if (style && style.includes('%')) {
+          const pct = parseFloat(style);
+          if (pct > 30 && pct < 200) return true;
+        }
+      }
+
+      return false;
+    } catch { return false; }
   })();
+
+  // Log media detection for debugging
+  if (hasMedia) {
+    console.log("[ReachOS] Media detected in composer");
+  }
 
   // 2. Run client rules immediately
   const input: TweetInput = {

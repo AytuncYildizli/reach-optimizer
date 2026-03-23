@@ -3,6 +3,7 @@ import { verifyToken } from '@lib/auth';
 import { applyRateLimit } from '@lib/middleware';
 import { env } from '@lib/env';
 import { ScoreEngine, allClientRules } from '@reach/rules-engine';
+import { detectLanguage, getLanguageInstruction } from '@reach/ai-checks';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60; // Allow up to 60s for multiple rounds
@@ -57,8 +58,8 @@ export async function POST(request: NextRequest) {
   let totalGenerated = 0;
 
   for (let round = 1; round <= maxRounds; round++) {
-    // Generate 3 variations of current best
-    const variations = await generateVariations(env.ANTHROPIC_API_KEY, currentBest, round);
+    // Generate 3 variations of current best (pass originalText for language detection)
+    const variations = await generateVariations(env.ANTHROPIC_API_KEY, currentBest, round, originalText);
     totalGenerated += variations.length;
 
     // Score each variation
@@ -102,10 +103,16 @@ export async function POST(request: NextRequest) {
   });
 }
 
-async function generateVariations(apiKey: string, seedText: string, round: number): Promise<string[]> {
+async function generateVariations(apiKey: string, seedText: string, round: number, originalText: string): Promise<string[]> {
+  const lang = detectLanguage(originalText);
+  const langInstruction = getLanguageInstruction(lang);
+
   const strategies = round === 1
-    ? 'Version 1: Bold/contrarian opener. Version 2: Specific number/data lead. Version 3: Provocative question that the tweet answers.'
-    : 'Push harder. Make the hook more specific, the claim bolder, the question sharper. Each version should try a DIFFERENT angle than the seed.';
+    ? 'Version 1: Reorder to lead with the strongest existing claim. Version 2: Start with a question the tweet answers. Version 3: Make the hook more provocative while keeping the same framing.'
+    : 'Rearrange the existing content more aggressively. Try different sentence structures. Each version should try a DIFFERENT arrangement of the SAME content.';
+
+  // Lower temperature to reduce hallucination — 0.4 base, slight increase per round
+  const temperature = Math.min(0.4 + (round * 0.05), 0.6);
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -117,31 +124,40 @@ async function generateVariations(apiKey: string, seedText: string, round: numbe
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 1024,
-      temperature: 0.8 + (round * 0.05), // Slightly more creative each round
-      system: `You are an elite X/Twitter ghostwriter. You rewrite tweets to maximize reach.
+      temperature,
+      system: `You are an elite X/Twitter ghostwriter. You REARRANGE tweets to maximize reach. You NEVER add new information.
+
+${langInstruction}
 
 WINNING PROFILE (from 200-experiment autoresearch optimization):
 - Tone: provocative and bold (0.77), NOT casual
 - Structure: personal story angle (0.85), first-person when possible
 - Hook: strong pattern interrupt or bold claim (0.81)
-- Specificity: very high — use concrete numbers, names, data (0.92)
 - Length: ~2 sentences, around 250-280 characters
 - Ending: question or provocative statement (~46% end with question)
 - Style: NO emoji, NO hashtags, sound human not AI
 
-Keep EXACT same facts. Return ONLY valid JSON.`,
+ANTI-HALLUCINATION RULES (CRITICAL):
+- If the original has NO numbers, your rewrite must have NO numbers
+- If the original has NO statistics/percentages, your rewrite must have NONE
+- If the original mentions no specific people, do NOT add names
+- Every claim in your rewrite MUST exist in the original
+- You are REARRANGING words, not creating new content
+
+Return ONLY valid JSON.`,
       messages: [{
         role: 'user',
-        content: `Round ${round}. Rewrite this tweet 3 ways. ABSOLUTE RULES:
+        content: `Round ${round}. Rewrite this tweet 3 ways in the SAME LANGUAGE as the original.
 
-1. PRESERVE the original message, analogies, metaphors, and framing — these ARE the content
-2. Do NOT invent new facts, numbers, or claims that aren't in the original
-3. Do NOT replace the original's metaphor with a different one
-4. If the original uses an analogy (like comparing X to Y), KEEP that analogy
-5. Only change: word order, sentence structure, hook placement, ending
-6. Each rewrite under 280 chars, 2 sentences max
-7. End ~half with question, ~half with bold statement
-8. NO emoji, NO hashtags, NO AI words
+ABSOLUTE RULES:
+1. Write in ${lang === 'tr' ? 'TURKISH' : 'ENGLISH'} — same language as the original
+2. PRESERVE the original message, analogies, metaphors, and framing
+3. NEVER invent new facts, numbers, statistics, or claims
+4. NEVER replace the original's metaphor with a different one
+5. If the original has NO numbers, your rewrite has NO numbers
+6. Only change: word order, sentence structure, hook placement, ending
+7. Each rewrite under 280 chars, 2 sentences max
+8. NO emoji, NO hashtags, NO AI words (delve, landscape, leverage, unleash, paradigm)
 ${strategies}
 
 Original tweet: "${seedText.replace(/"/g, '\\"')}"

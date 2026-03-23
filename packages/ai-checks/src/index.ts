@@ -13,6 +13,10 @@ export type { ServerAnalysisResult } from './analyzer';
 export { createClaudeClient, analyzeWithClaude, parseClaudeJSON } from './claude-client';
 export type { HookQualityResult } from './prompts/hook-quality';
 
+// Language detection
+export { detectLanguage, getLanguageInstruction } from './language-detect';
+export type { DetectedLanguage } from './language-detect';
+
 // Backward-compatible stubs — use AIAnalyzer for full functionality
 export async function analyzeWithAI(_input: TweetInput): Promise<RuleResult[]> {
   return [];
