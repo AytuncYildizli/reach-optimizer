@@ -617,6 +617,10 @@ function ReachForecastPanel({ analysis, hasMedia, hasExternalLink }: {
       trackedTweetCount: trackedCount,
     });
     setForecast(result);
+    // Broadcast predicted reach so post-tracker can capture it
+    window.dispatchEvent(new CustomEvent('reachos-forecast-update', {
+      detail: { predictedReach: result.predictedReach },
+    }));
   }, [analysis, accountHealth, timingStatus, hasMedia, hasExternalLink, avgViews, trackedCount]);
 
   if (!forecast) return null;

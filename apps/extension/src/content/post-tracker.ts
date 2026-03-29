@@ -6,6 +6,7 @@
 export function setupPostTracker(
   getCurrentText: () => string,
   getCurrentScore: () => number,
+  getPredictedReach: () => number,
 ): void {
   const observer = new MutationObserver(() => {
     const postButtons = document.querySelectorAll<HTMLElement>(
@@ -18,6 +19,7 @@ export function setupPostTracker(
         btn.addEventListener("click", () => {
           const text = getCurrentText();
           const score = getCurrentScore();
+          const predictedReach = getPredictedReach();
 
           if (text && text.length > 5) {
             chrome.runtime.sendMessage({
@@ -27,12 +29,14 @@ export function setupPostTracker(
               body: {
                 content: text,
                 reachScore: score,
+                predictedReach: predictedReach > 0 ? predictedReach : undefined,
                 optimized: true,
                 tweetUrl: window.location.href,
               },
             });
             console.log("[ReachOS] Tweet tracked:", {
               score,
+              predictedReach,
               textLength: text.length,
             });
           }

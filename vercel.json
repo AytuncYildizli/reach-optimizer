@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/learn-weights",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/calibrate-forecast",
+      "schedule": "0 5 * * *"
     }
   ]
 }

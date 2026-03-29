@@ -38,6 +38,7 @@ let latestClientAnalysis: AnalysisResult | null = null;
 // ---------------------------------------------------------------------------
 let latestText = "";
 let latestScore = 0;
+let latestPredictedReach = 0;
 
 /**
  * Merge server AI-enhanced results into the current client analysis.
@@ -371,7 +372,13 @@ function init(): void {
   setupPostTracker(
     () => latestText,
     () => latestScore,
+    () => latestPredictedReach,
   );
+
+  // Listen for forecast updates from the React component
+  window.addEventListener('reachos-forecast-update', ((e: CustomEvent) => {
+    latestPredictedReach = e.detail?.predictedReach ?? 0;
+  }) as EventListener);
 
   setupReplyCoach();
   setupXRayMode();

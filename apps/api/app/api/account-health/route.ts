@@ -69,9 +69,19 @@ export async function GET(req: NextRequest) {
       avgEngagement,
     );
 
+    // Include forecast calibration if available
+    const fullUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { forecastCalibration: true },
+    });
+    const calibration = fullUser?.forecastCalibration as { correctionFactor?: number } | null;
+
     return NextResponse.json({
       success: true,
-      data: health,
+      data: {
+        ...health,
+        forecastCorrectionFactor: calibration?.correctionFactor ?? null,
+      },
     } satisfies AccountHealthResponse);
   } catch (error) {
     console.error('[account-health] Error:', error);

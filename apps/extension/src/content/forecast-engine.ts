@@ -84,10 +84,13 @@ export function computeForecast(input: ForecastInput): ReachForecast {
   // 7. Account health multiplier
   const healthMultiplier = accountHealth?.reachMultiplier ?? 1.0;
 
+  // 8. Calibration correction (from historical prediction vs actual comparison)
+  const calibrationFactor = accountHealth?.forecastCorrectionFactor ?? 1.0;
+
   // Compute prediction
   const predictedReach = Math.round(
     baseReach * contentMultiplier * timeMultiplier * trendMultiplier
-    * mediaMultiplier * linkMultiplier * healthMultiplier,
+    * mediaMultiplier * linkMultiplier * healthMultiplier * calibrationFactor,
   );
 
   // Confidence interval — widens with fewer data points
@@ -317,10 +320,11 @@ function recompute(
   const mediaMultiplier = hasMedia ? MEDIA_MULTIPLIER : 1.0;
   const linkMultiplier = hasExternalLink ? LINK_PENALTY : 1.0;
   const healthMultiplier = accountHealth?.reachMultiplier ?? 1.0;
+  const calibrationFactor = accountHealth?.forecastCorrectionFactor ?? 1.0;
 
   return Math.round(
     baseReach * contentMultiplier * timeMultiplier * trendMultiplier
-    * mediaMultiplier * linkMultiplier * healthMultiplier,
+    * mediaMultiplier * linkMultiplier * healthMultiplier * calibrationFactor,
   );
 }
 

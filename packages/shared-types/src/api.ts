@@ -68,6 +68,7 @@ export interface AccountHealth {
   accountAgeDays: number;
   avgEngagementRate: number | null;  // from tracked tweets, null if no data
   fetchedAt: string;                  // ISO timestamp
+  forecastCorrectionFactor?: number | null; // from calibration cron, null if no data
 }
 
 export interface AccountHealthResponse {
