@@ -576,6 +576,194 @@ export const OVERLAY_STYLES = `
   font-weight: 600;
 }
 
+/* Reach Forecast */
+.reachos-forecast {
+  padding: 0 16px 12px;
+  border-top: 1px solid #2f3336;
+}
+.reachos-forecast-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding-top: 10px;
+}
+.reachos-forecast-reach {
+  text-align: center;
+  margin-bottom: 12px;
+}
+.reachos-forecast-number {
+  font-size: 28px;
+  font-weight: 800;
+  color: #e7e9ea;
+  line-height: 1;
+}
+.reachos-forecast-range {
+  font-size: 10px;
+  color: #71767b;
+  margin-top: 2px;
+}
+.reachos-forecast-vs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.reachos-forecast-vs.positive {
+  background: rgba(0,186,124,0.12);
+  color: #00ba7c;
+}
+.reachos-forecast-vs.negative {
+  background: rgba(244,33,46,0.1);
+  color: #f4212e;
+}
+.reachos-forecast-vs.neutral {
+  background: rgba(113,118,123,0.1);
+  color: #71767b;
+}
+
+/* Probability bars */
+.reachos-forecast-probs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.reachos-forecast-prob {
+  flex: 1;
+  text-align: center;
+  padding: 6px 4px;
+  background: rgba(47,51,54,0.5);
+  border-radius: 8px;
+  border: 1px solid #2f3336;
+}
+.reachos-forecast-prob-value {
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+.reachos-forecast-prob-value.high { color: #00ba7c; }
+.reachos-forecast-prob-value.medium { color: #ffd400; }
+.reachos-forecast-prob-value.low { color: #71767b; }
+.reachos-forecast-prob-label {
+  font-size: 8px;
+  color: #71767b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  line-height: 1.2;
+}
+
+/* What-If Scenarios */
+.reachos-whatif-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.reachos-whatif-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: rgba(29,155,240,0.04);
+  border: 1px solid rgba(29,155,240,0.1);
+  border-radius: 8px;
+  cursor: default;
+  transition: background 0.15s, border-color 0.15s;
+}
+.reachos-whatif-item:hover {
+  background: rgba(29,155,240,0.08);
+  border-color: rgba(29,155,240,0.2);
+}
+.reachos-whatif-item.applied {
+  background: rgba(0,186,124,0.06);
+  border-color: rgba(0,186,124,0.15);
+  opacity: 0.7;
+}
+.reachos-whatif-item.combined {
+  background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(29,155,240,0.08));
+  border-color: rgba(139,92,246,0.25);
+}
+.reachos-whatif-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+}
+.reachos-whatif-text {
+  flex: 1;
+  min-width: 0;
+}
+.reachos-whatif-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #e7e9ea;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.reachos-whatif-desc {
+  font-size: 9px;
+  color: #71767b;
+  line-height: 1.2;
+}
+.reachos-whatif-delta {
+  flex-shrink: 0;
+  text-align: right;
+}
+.reachos-whatif-delta-number {
+  font-size: 12px;
+  font-weight: 800;
+}
+.reachos-whatif-delta-number.positive { color: #00ba7c; }
+.reachos-whatif-delta-number.negative { color: #f4212e; }
+.reachos-whatif-delta-number.neutral { color: #71767b; }
+.reachos-whatif-delta-reach {
+  font-size: 9px;
+  color: #71767b;
+}
+.reachos-whatif-applied-tag {
+  font-size: 9px;
+  color: #00ba7c;
+  font-weight: 600;
+  padding: 1px 6px;
+  background: rgba(0,186,124,0.1);
+  border-radius: 4px;
+}
+
+/* Forecast footer */
+.reachos-forecast-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(47,51,54,0.5);
+  font-size: 9px;
+  color: #536471;
+}
+.reachos-forecast-confidence {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.reachos-confidence-bar {
+  width: 40px;
+  height: 3px;
+  background: #2f3336;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.reachos-confidence-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: #1d9bf0;
+  transition: width 0.3s ease;
+}
+
 /* Trending Badge */
 .reachos-trending-section {
   padding: 0 16px 8px;

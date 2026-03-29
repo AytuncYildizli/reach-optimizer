@@ -23,6 +23,8 @@ let setGlobalAnalysis: ((a: AnalysisResult | null) => void) | null = null;
 let setGlobalServerPending: ((p: boolean) => void) | null = null;
 let setGlobalServerError: ((e: boolean) => void) | null = null;
 let setGlobalCurrentText: ((t: string) => void) | null = null;
+let setGlobalHasMedia: ((m: boolean) => void) | null = null;
+let setGlobalHasExternalLink: ((l: boolean) => void) | null = null;
 
 // ---------------------------------------------------------------------------
 // Server analysis state
@@ -134,17 +136,23 @@ function ScorePanel() {
   const [serverPending, setServerPending] = useState(false);
   const [serverError, setServerError] = useState(false);
   const [currentText, setCurrentText] = useState("");
+  const [hasMedia, setHasMedia] = useState(false);
+  const [hasExternalLink, setHasExternalLink] = useState(false);
 
   useEffect(() => {
     setGlobalAnalysis = setAnalysis;
     setGlobalServerPending = setServerPending;
     setGlobalServerError = setServerError;
     setGlobalCurrentText = setCurrentText;
+    setGlobalHasMedia = setHasMedia;
+    setGlobalHasExternalLink = setHasExternalLink;
     return () => {
       setGlobalAnalysis = null;
       setGlobalServerPending = null;
       setGlobalServerError = null;
       setGlobalCurrentText = null;
+      setGlobalHasMedia = null;
+      setGlobalHasExternalLink = null;
     };
   }, []);
 
@@ -154,6 +162,8 @@ function ScorePanel() {
       isServerPending={serverPending}
       serverError={serverError}
       currentText={currentText}
+      hasMedia={hasMedia}
+      hasExternalLink={hasExternalLink}
     />
   );
 }
@@ -309,11 +319,20 @@ function onComposerTextChange(_composerEl: HTMLElement, text: string): void {
   latestText = text;
   latestScore = result.reachScore;
 
+  // Detect external links for forecast
+  const hasExternalLink = /https?:\/\/(?!(?:x\.com|twitter\.com|t\.co|pic\.twitter\.com))/i.test(text);
+
   if (setGlobalAnalysis) {
     setGlobalAnalysis(result);
   }
   if (setGlobalCurrentText) {
     setGlobalCurrentText(text);
+  }
+  if (setGlobalHasMedia) {
+    setGlobalHasMedia(hasMedia);
+  }
+  if (setGlobalHasExternalLink) {
+    setGlobalHasExternalLink(hasExternalLink);
   }
 
   // Update extension icon badge with current score
