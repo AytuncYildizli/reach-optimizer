@@ -32,17 +32,9 @@ Real-time 0-100 score as you type in the X.com composer. Breakdown bars for Hook
 ![Score Overlay with Reach Forecast](docs/screenshots/overlay-score-forecast.png)
 
 ### X-Ray Mode
-Scores every tweet on your timeline as you scroll. See at a glance which tweets have strong reach potential and which don't.
+Scores every tweet on your timeline as you scroll. Color-coded pills (red/orange/yellow/green/blue/purple) show reach potential at a glance.
 
-```
-  ┌──────────────────────────────┐
-  │ @user · 2h                   │
-  │ Just shipped a new feature   │
-  │ that saves 3 hours/week...   │
-  │                              │
-  │ 💬  🔁  ❤️  📊  ● 72       │
-  └──────────────────────────────┘
-```
+![X-Ray Mode](docs/screenshots/xray-mode.png)
 
 ### AI-Powered Analysis (BYOK)
 - **AI Slop Detection** - Flags AI-sounding language (28 weighted patterns + Claude verification)
