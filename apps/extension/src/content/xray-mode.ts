@@ -14,6 +14,19 @@ const scoredTweets = new WeakSet<HTMLElement>();
 // Text-based score cache — same text always gets the same score (deterministic)
 const scoreCache = new Map<string, { score: number; tier: string }>();
 
+// Posted tweet scores — frozen at post time from the overlay (source of truth)
+const postedScores = new Map<string, number>();
+
+/**
+ * Called by post-tracker when user posts a tweet.
+ * Locks the score so X-Ray shows the exact same number as the overlay.
+ */
+export function lockPostedScore(text: string, score: number): void {
+  // Normalize: trim + collapse whitespace for matching against DOM extraction
+  const key = text.trim().replace(/\s+/g, ' ');
+  postedScores.set(key, score);
+}
+
 // X-Ray tiers aligned with v3.0 weights (baseScore 30, wider distribution)
 const XRAY_TIERS = [
   { max: 20, label: "weak", color: "#f4212e" },    // red — don't post
@@ -130,23 +143,32 @@ function scoreTweet(tweetEl: HTMLElement): void {
   const text = extractTweetText(tweetEl);
   if (!text) return;
 
-  const hasMedia = tweetHasMedia(tweetEl);
-  const cacheKey = text + (hasMedia ? '|M' : '|T');
+  // Check if this tweet was posted by the user — use the frozen overlay score
+  const normalizedText = text.trim().replace(/\s+/g, ' ');
+  const locked = postedScores.get(normalizedText);
 
-  // Use cached score if available — guarantees deterministic scoring
   let result;
-  const cached = scoreCache.get(cacheKey);
-  if (cached) {
-    result = { reachScore: cached.score, tier: cached.tier, breakdown: {} as never, suggestions: [] as never[] };
+  if (locked !== undefined) {
+    const tier = engine.evaluate({ text, platform: 'x', isThread: false, hasMedia: false }).tier;
+    result = { reachScore: locked, tier, breakdown: {} as never, suggestions: [] as never[] };
   } else {
-    const input: TweetInput = {
-      text,
-      platform: "x",
-      isThread: false,
-      hasMedia,
-    };
-    result = engine.evaluate(input);
-    scoreCache.set(cacheKey, { score: result.reachScore, tier: result.tier });
+    const hasMedia = tweetHasMedia(tweetEl);
+    const cacheKey = text + (hasMedia ? '|M' : '|T');
+
+    // Use cached score if available — guarantees deterministic scoring
+    const cached = scoreCache.get(cacheKey);
+    if (cached) {
+      result = { reachScore: cached.score, tier: cached.tier, breakdown: {} as never, suggestions: [] as never[] };
+    } else {
+      const input: TweetInput = {
+        text,
+        platform: "x",
+        isThread: false,
+        hasMedia,
+      };
+      result = engine.evaluate(input);
+      scoreCache.set(cacheKey, { score: result.reachScore, tier: result.tier });
+    }
   }
 
   // Find the action bar (like/retweet/reply buttons row)
@@ -172,9 +194,7 @@ function scoreTweet(tweetEl: HTMLElement): void {
       `[ReachOS X-Ray] Score: ${result.reachScore}/100 (${result.tier})`,
       {
         text: text.substring(0, 80) + "...",
-        breakdown: result.breakdown,
-        suggestions: result.suggestions.map((s) => s.title),
-        hasMedia,
+        locked: locked !== undefined,
       }
     );
   });

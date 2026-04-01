@@ -5,7 +5,7 @@ import type { AnalysisResult, TweetInput } from "@reach/shared-types";
 import { ComposerDetector } from "./composer-detector";
 import { setupPostTracker } from "./post-tracker";
 import { setupReplyCoach } from "./reply-coach";
-import { setupXRayMode } from "./xray-mode";
+import { setupXRayMode, lockPostedScore } from "./xray-mode";
 import { ScoreOverlay } from "./ScoreOverlay";
 import { OVERLAY_STYLES } from "./styles";
 
@@ -385,6 +385,7 @@ function init(): void {
     () => latestText,
     () => latestScore,
     () => latestPredictedReach,
+    (text, score) => lockPostedScore(text, score),
   );
 
   // Listen for forecast updates from the React component

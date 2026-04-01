@@ -7,6 +7,7 @@ export function setupPostTracker(
   getCurrentText: () => string,
   getCurrentScore: () => number,
   getPredictedReach: () => number,
+  onPosted?: (text: string, score: number) => void,
 ): void {
   const observer = new MutationObserver(() => {
     const postButtons = document.querySelectorAll<HTMLElement>(
@@ -34,6 +35,9 @@ export function setupPostTracker(
                 tweetUrl: window.location.href,
               },
             });
+            // Lock score for X-Ray consistency
+            if (onPosted) onPosted(text, score);
+
             console.log("[ReachOS] Tweet tracked:", {
               score,
               predictedReach,
