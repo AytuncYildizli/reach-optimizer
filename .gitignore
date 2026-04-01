@@ -11,13 +11,27 @@ dist
 # environment variables
 .env
 .env.local
+.env*.local
 
 # typescript
 *.tsbuildinfo
 
 # vercel
 .vercel
-.env*.local
 
 # Turbo prune output (Vercel deploy)
 out/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# temp files
+.tmp-*
+*.tmp
