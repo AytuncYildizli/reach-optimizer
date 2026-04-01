@@ -42,6 +42,8 @@ let latestPredictedReach = 0;
 
 /**
  * Merge server AI-enhanced results into the current client analysis.
+ * IMPORTANT: Client score is the source of truth (it has correct hasMedia etc).
+ * Server only provides AI-specific DELTA points, suggestions, and trending.
  */
 function mergeServerResult(
   clientAnalysis: AnalysisResult,
@@ -51,12 +53,21 @@ function mergeServerResult(
     suggestions?: AnalysisResult["suggestions"];
     trendingAlignment?: AnalysisResult["trendingAlignment"];
   },
+  serverDelta: number,
 ): AnalysisResult {
+  // Collect only server-specific suggestions (AI slop, hook quality, trending)
+  const serverOnlySuggestions = (serverData.suggestions ?? []).filter(
+    s => s.ruleId.startsWith('server-'),
+  );
+
+  // Merge: keep client score, ADD server delta (AI checks + trending)
+  const mergedScore = Math.max(0, Math.min(100, clientAnalysis.reachScore + serverDelta));
+
   return {
     ...clientAnalysis,
-    reachScore: serverData.reachScore ?? clientAnalysis.reachScore,
+    reachScore: mergedScore,
     aiSlopScore: serverData.aiSlopScore ?? clientAnalysis.aiSlopScore,
-    suggestions: serverData.suggestions ?? clientAnalysis.suggestions,
+    suggestions: [...clientAnalysis.suggestions, ...serverOnlySuggestions],
     trendingAlignment: serverData.trendingAlignment ?? null,
     isServerEnhanced: true,
   };
@@ -107,7 +118,8 @@ function doServerRequest(text: string): void {
 
         if (response?.ok && response.data?.success && latestClientAnalysis) {
           if (setGlobalServerError) setGlobalServerError(false);
-          const merged = mergeServerResult(latestClientAnalysis, response.data.data);
+          const delta = response.data.serverDelta ?? 0;
+          const merged = mergeServerResult(latestClientAnalysis, response.data.data, delta);
           if (setGlobalAnalysis) setGlobalAnalysis(merged);
           try {
             chrome.runtime.sendMessage({ type: "UPDATE_BADGE", score: merged.reachScore });

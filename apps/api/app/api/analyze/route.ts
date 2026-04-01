@@ -41,62 +41,48 @@ export async function POST(request: NextRequest) {
   const rateLimited = applyRateLimit(request, identifier);
   if (rateLimited) return rateLimited;
 
-  // 4. Run client-side rules (always works, auth or not)
-  const clientResult = engine.evaluate({
-    text: body.content,
-    platform: body.platform ?? 'x',
-    isThread: false,
-    hasMedia: false,
-  });
+  // 4. Run AI analysis only — client already scored the tweet with correct
+  //    context (hasMedia, etc). Server only adds AI checks + trending.
+  let aiSlopScore: number | null = null;
+  let aiPointsDelta = 0;
+  const aiSuggestions: AnalysisResult['suggestions'] = [];
 
-  // 5. Run AI analysis (if API key available)
-  let serverResult = null;
   if (env.ANTHROPIC_API_KEY) {
     try {
       const analyzer = new AIAnalyzer(env.ANTHROPIC_API_KEY);
-      serverResult = await analyzer.fullAnalysis(body.content);
+      const serverResult = await analyzer.fullAnalysis(body.content);
+      aiSlopScore = serverResult.slopScore;
+
+      for (const sr of serverResult.serverRuleResults) {
+        if (sr.triggered) {
+          aiPointsDelta += sr.points;
+          if (sr.suggestion) {
+            aiSuggestions.push({
+              ruleId: sr.ruleId,
+              severity: sr.severity,
+              title: sr.ruleId === 'server-ai-slop' ? 'AI Slop Detection' : 'Hook Quality',
+              description: sr.suggestion,
+            });
+          }
+        }
+      }
     } catch (error) {
       console.error('[Analyze] AI analysis failed:', error);
     }
   }
 
-  // 6. Merge results
-  const finalResult: AnalysisResult = {
-    ...clientResult,
-    isServerEnhanced: true,
-    aiSlopScore: serverResult?.slopScore ?? null,
-  };
-
-  if (serverResult) {
-    for (const sr of serverResult.serverRuleResults) {
-      if (sr.triggered && sr.suggestion) {
-        finalResult.suggestions.push({
-          ruleId: sr.ruleId,
-          severity: sr.severity,
-          title: sr.ruleId === 'server-ai-slop' ? 'AI Slop Detection' : 'Hook Quality',
-          description: sr.suggestion,
-        });
-      }
-    }
-
-    const serverPoints = serverResult.serverRuleResults
-      .filter(r => r.triggered)
-      .reduce((sum, r) => sum + r.points, 0);
-    finalResult.reachScore = Math.max(0, Math.min(100, finalResult.reachScore + serverPoints));
-  }
-
-  // 6b. Trending topic alignment (+5 bonus)
+  // 5. Trending topic alignment (+5 bonus)
+  let trendingAlignment: AnalysisResult['trendingAlignment'] = null;
+  let trendingDelta = 0;
   try {
     const trendingData = await getCachedTrends();
     const alignment = checkTrendingAlignment(body.content, trendingData.trends);
-    finalResult.trendingAlignment = alignment;
+    trendingAlignment = alignment;
 
     if (alignment.isAligned) {
-      finalResult.reachScore = Math.min(100, finalResult.reachScore + alignment.bonusPoints);
-      finalResult.breakdown.bonuses += alignment.bonusPoints;
-
+      trendingDelta = alignment.bonusPoints;
       const trendNames = alignment.matchedTrends.map(t => t.name).join(', ');
-      finalResult.suggestions.push({
+      aiSuggestions.push({
         ruleId: 'server-trending-boost',
         severity: 'positive',
         title: 'Trending Topic Boost',
@@ -105,8 +91,28 @@ export async function POST(request: NextRequest) {
     }
   } catch (error) {
     console.error('[Analyze] Trending alignment check failed (non-blocking):', error);
-    finalResult.trendingAlignment = null;
   }
+
+  // 6. Build server-only result — client will merge the DELTA, not replace its score.
+  //    We still run rules server-side for the DB record, but the extension ignores
+  //    the server reachScore and only uses aiPointsDelta + trendingDelta.
+  const serverRulesResult = engine.evaluate({
+    text: body.content,
+    platform: body.platform ?? 'x',
+    isThread: false,
+    hasMedia: false,
+  });
+
+  const finalResult: AnalysisResult = {
+    ...serverRulesResult,
+    isServerEnhanced: true,
+    aiSlopScore,
+    trendingAlignment,
+  };
+  // Apply AI + trending deltas to the server-side score for DB storage
+  finalResult.reachScore = Math.max(0, Math.min(100, finalResult.reachScore + aiPointsDelta + trendingDelta));
+  finalResult.breakdown.bonuses += trendingDelta;
+  finalResult.suggestions.push(...aiSuggestions);
 
   // 7. Save to DB only if authenticated
   if (userId) {
@@ -127,7 +133,7 @@ export async function POST(request: NextRequest) {
             engagementScore: finalResult.breakdown.engagement,
             penaltyTotal: finalResult.breakdown.penalties,
             bonusTotal: finalResult.breakdown.bonuses,
-            aiSlopScore: serverResult?.slopScore ?? null,
+            aiSlopScore: aiSlopScore,
             suggestions: JSON.parse(JSON.stringify(finalResult.suggestions)),
             ruleResults: JSON.parse(JSON.stringify(finalResult.highlights)),
           },
@@ -138,5 +144,11 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ success: true, data: finalResult } satisfies AnalyzeResponse);
+  return NextResponse.json({
+    success: true,
+    data: finalResult,
+    // Server-only deltas — client should ADD these to its own score
+    // instead of replacing its score with the server's
+    serverDelta: aiPointsDelta + trendingDelta,
+  });
 }
