@@ -35,3 +35,4 @@ Thumbs.db
 # temp files
 .tmp-*
 *.tmp
+.vercel
