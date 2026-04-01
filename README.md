@@ -26,33 +26,10 @@ ReachOS says: "This will reach ~14,200 people.
 
 ## Features
 
-### Score Overlay
-Real-time 0-100 score as you type in the X.com composer. Breakdown bars for Hook, Structure, Engagement, Penalties, and Bonuses.
+### Score Overlay + Reach Forecast
+Real-time 0-100 score as you type in the X.com composer. Breakdown bars for Hook, Structure, Engagement, Penalties, and Bonuses. Reach Forecast predicts impressions with interactive what-if scenarios.
 
-<!-- TODO: screenshot of score overlay -->
-<!-- ![Score Overlay](docs/screenshots/overlay.png) -->
-
-### Reach Forecast + What-If Scenarios
-Predicts how many impressions your tweet will get. Interactive what-if scenarios show the impact of each change before you make it.
-
-```
-  Reach Forecast
-  ┌─────────────────────────────────────┐
-  │          14,200                      │
-  │   12.1K - 16.3K estimated reach     │
-  │        ▲ 1.8x vs your avg          │
-  │                                     │
-  │  82%  Reply    34%  Bookmark   12%  │
-  │  chance        chance        Viral  │
-  │                                     │
-  │  WHAT-IF SCENARIOS                  │
-  │  🔗 Remove the link     +52%       │
-  │  🖼️ Add an image        +38%       │
-  │  ⏰ Post at peak time   +25%       │
-  │  🔥 Align with trend    +15%       │
-  │  🚀 All combined        +142%      │
-  └─────────────────────────────────────┘
-```
+![Score Overlay with Reach Forecast](docs/screenshots/overlay-score-forecast.png)
 
 ### X-Ray Mode
 Scores every tweet on your timeline as you scroll. See at a glance which tweets have strong reach potential and which don't.
