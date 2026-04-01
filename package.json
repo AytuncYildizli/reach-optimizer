@@ -9,8 +9,8 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "clean": "turbo run clean",
-    "deploy": "npx turbo prune @reach/api --out-dir=./out && cp tsconfig.base.json out/ && cp -r out/.npmrc out/ 2>/dev/null; echo 'shamefully-hoist=true\nnode-linker=hoisted\nenable-pre-post-scripts=true' > out/.npmrc && cd out && mkdir -p .vercel && echo '{\"projectId\":\"prj_NTVeJlbxXwYUCsBwhdVxIL9KgXKf\",\"orgId\":\"team_3DcQxWVilHOO0abC7PfZ30Vw\",\"projectName\":\"reach-optimizer\"}' > .vercel/project.json && vercel deploy --prod --yes",
-    "deploy:preview": "npx turbo prune @reach/api --out-dir=./out && cp tsconfig.base.json out/ && echo 'shamefully-hoist=true\nnode-linker=hoisted\nenable-pre-post-scripts=true' > out/.npmrc && cd out && mkdir -p .vercel && echo '{\"projectId\":\"prj_NTVeJlbxXwYUCsBwhdVxIL9KgXKf\",\"orgId\":\"team_3DcQxWVilHOO0abC7PfZ30Vw\",\"projectName\":\"reach-optimizer\"}' > .vercel/project.json && vercel deploy --yes"
+    "deploy": "npx turbo prune @reach/api --out-dir=./out && cp tsconfig.base.json out/ && echo 'shamefully-hoist=true\nnode-linker=hoisted\nenable-pre-post-scripts=true' > out/.npmrc && cd out && vercel deploy --prod --yes",
+    "deploy:preview": "npx turbo prune @reach/api --out-dir=./out && cp tsconfig.base.json out/ && echo 'shamefully-hoist=true\nnode-linker=hoisted\nenable-pre-post-scripts=true' > out/.npmrc && cd out && vercel deploy --yes"
   },
   "devDependencies": {
     "turbo": "^2.4.4",
