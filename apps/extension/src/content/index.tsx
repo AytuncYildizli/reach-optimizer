@@ -5,7 +5,7 @@ import type { AnalysisResult, TweetInput } from "@reach/shared-types";
 import { ComposerDetector } from "./composer-detector";
 import { setupPostTracker } from "./post-tracker";
 import { setupReplyCoach } from "./reply-coach";
-import { setupXRayMode } from "./xray-mode";
+import { setupXRayMode, lockPostedScore } from "./xray-mode";
 import { ScoreOverlay } from "./ScoreOverlay";
 import { OVERLAY_STYLES } from "./styles";
 
@@ -23,6 +23,8 @@ let setGlobalAnalysis: ((a: AnalysisResult | null) => void) | null = null;
 let setGlobalServerPending: ((p: boolean) => void) | null = null;
 let setGlobalServerError: ((e: boolean) => void) | null = null;
 let setGlobalCurrentText: ((t: string) => void) | null = null;
+let setGlobalHasMedia: ((m: boolean) => void) | null = null;
+let setGlobalHasExternalLink: ((l: boolean) => void) | null = null;
 
 // ---------------------------------------------------------------------------
 // Server analysis state
@@ -36,9 +38,12 @@ let latestClientAnalysis: AnalysisResult | null = null;
 // ---------------------------------------------------------------------------
 let latestText = "";
 let latestScore = 0;
+let latestPredictedReach = 0;
 
 /**
  * Merge server AI-enhanced results into the current client analysis.
+ * IMPORTANT: Client score is the source of truth (it has correct hasMedia etc).
+ * Server only provides AI-specific DELTA points, suggestions, and trending.
  */
 function mergeServerResult(
   clientAnalysis: AnalysisResult,
@@ -48,12 +53,21 @@ function mergeServerResult(
     suggestions?: AnalysisResult["suggestions"];
     trendingAlignment?: AnalysisResult["trendingAlignment"];
   },
+  serverDelta: number,
 ): AnalysisResult {
+  // Collect only server-specific suggestions (AI slop, hook quality, trending)
+  const serverOnlySuggestions = (serverData.suggestions ?? []).filter(
+    s => s.ruleId.startsWith('server-'),
+  );
+
+  // Merge: keep client score, ADD server delta (AI checks + trending)
+  const mergedScore = Math.max(0, Math.min(100, clientAnalysis.reachScore + serverDelta));
+
   return {
     ...clientAnalysis,
-    reachScore: serverData.reachScore ?? clientAnalysis.reachScore,
+    reachScore: mergedScore,
     aiSlopScore: serverData.aiSlopScore ?? clientAnalysis.aiSlopScore,
-    suggestions: serverData.suggestions ?? clientAnalysis.suggestions,
+    suggestions: [...clientAnalysis.suggestions, ...serverOnlySuggestions],
     trendingAlignment: serverData.trendingAlignment ?? null,
     isServerEnhanced: true,
   };
@@ -63,35 +77,68 @@ function mergeServerResult(
  * Request server analysis via the background service worker.
  */
 function requestServerAnalysis(text: string): void {
+  // Check if we have an auth token before making server requests
+  // If not logged in, silently skip — server analysis is a premium feature
+  try {
+    chrome.storage.local.get('authToken', (result) => {
+      if (chrome.runtime.lastError || !result.authToken) {
+        // No token — skip server analysis silently (not an error)
+        return;
+      }
+      doServerRequest(text);
+    });
+  } catch {
+    // Extension context lost — silently skip
+  }
+}
+
+function doServerRequest(text: string): void {
   isServerPending = true;
   if (setGlobalServerPending) setGlobalServerPending(true);
 
-  chrome.runtime.sendMessage(
-    {
-      type: "API_REQUEST",
-      endpoint: "/api/analyze",
-      method: "POST",
-      body: { content: text, platform: "x" },
-    },
-    (response) => {
-      isServerPending = false;
-      if (setGlobalServerPending) setGlobalServerPending(false);
+  try {
+    chrome.runtime.sendMessage(
+      {
+        type: "API_REQUEST",
+        endpoint: "/api/analyze",
+        method: "POST",
+        body: { content: text, platform: "x" },
+      },
+      (response) => {
+        // Guard against extension context invalidated (SPA navigation, extension reload)
+        if (chrome.runtime.lastError) {
+          console.warn("[ReachOS] Extension context lost:", chrome.runtime.lastError.message);
+          isServerPending = false;
+          if (setGlobalServerPending) setGlobalServerPending(false);
+          return;
+        }
 
-      if (response?.ok && response.data?.success && latestClientAnalysis) {
-        if (setGlobalServerError) setGlobalServerError(false);
-        const merged = mergeServerResult(latestClientAnalysis, response.data.data);
-        if (setGlobalAnalysis) setGlobalAnalysis(merged);
-        chrome.runtime.sendMessage({ type: "UPDATE_BADGE", score: merged.reachScore });
-        console.log("[ReachOS] Server analysis merged", {
-          aiSlopScore: merged.aiSlopScore,
-          reachScore: merged.reachScore,
-        });
-      } else {
-        if (setGlobalServerError) setGlobalServerError(true);
-        console.warn("[ReachOS] Server analysis failed or stale", response);
-      }
-    },
-  );
+        isServerPending = false;
+        if (setGlobalServerPending) setGlobalServerPending(false);
+
+        if (response?.ok && response.data?.success && latestClientAnalysis) {
+          if (setGlobalServerError) setGlobalServerError(false);
+          const delta = response.data.serverDelta ?? 0;
+          const merged = mergeServerResult(latestClientAnalysis, response.data.data, delta);
+          if (setGlobalAnalysis) setGlobalAnalysis(merged);
+          try {
+            chrome.runtime.sendMessage({ type: "UPDATE_BADGE", score: merged.reachScore });
+          } catch { /* badge update is non-critical */ }
+          console.log("[ReachOS] Server analysis merged", {
+            aiSlopScore: merged.aiSlopScore,
+            reachScore: merged.reachScore,
+          });
+        } else {
+          if (setGlobalServerError) setGlobalServerError(true);
+          console.warn("[ReachOS] Server analysis failed or stale", response);
+        }
+      },
+    );
+  } catch {
+    // Extension context invalidated — silently ignore
+    isServerPending = false;
+    if (setGlobalServerPending) setGlobalServerPending(false);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -102,17 +149,23 @@ function ScorePanel() {
   const [serverPending, setServerPending] = useState(false);
   const [serverError, setServerError] = useState(false);
   const [currentText, setCurrentText] = useState("");
+  const [hasMedia, setHasMedia] = useState(false);
+  const [hasExternalLink, setHasExternalLink] = useState(false);
 
   useEffect(() => {
     setGlobalAnalysis = setAnalysis;
     setGlobalServerPending = setServerPending;
     setGlobalServerError = setServerError;
     setGlobalCurrentText = setCurrentText;
+    setGlobalHasMedia = setHasMedia;
+    setGlobalHasExternalLink = setHasExternalLink;
     return () => {
       setGlobalAnalysis = null;
       setGlobalServerPending = null;
       setGlobalServerError = null;
       setGlobalCurrentText = null;
+      setGlobalHasMedia = null;
+      setGlobalHasExternalLink = null;
     };
   }, []);
 
@@ -122,6 +175,8 @@ function ScorePanel() {
       isServerPending={serverPending}
       serverError={serverError}
       currentText={currentText}
+      hasMedia={hasMedia}
+      hasExternalLink={hasExternalLink}
     />
   );
 }
@@ -163,85 +218,94 @@ function onComposerTextChange(_composerEl: HTMLElement, text: string): void {
     return;
   }
 
-  // 1. Detect media — multiple strategies for robustness against X.com DOM changes
+  // 1. Detect media — searches multiple scopes for robustness
   const hasMedia = (() => {
     try {
-      // Find the composer container first (scope all checks to this)
       const composer = document.querySelector('[data-testid="tweetTextarea_0"]');
-      const composerContainer = composer?.closest('[data-testid="tweetButtonInline"]')?.parentElement
-        || composer?.closest('[role="dialog"]')
-        || composer?.closest('[data-testid="primaryColumn"]')
-        || composer?.closest('form')
-        || (() => {
-          // Walk up from composer to find a reasonable container
-          let el: HTMLElement | null = composer as HTMLElement;
-          for (let i = 0; i < 15 && el; i++) el = el.parentElement;
-          return el;
-        })();
+      if (!composer) return false;
 
-      if (!composerContainer) return false;
+      // Build a list of containers to check, from narrow to wide
+      const containers: Element[] = [];
+      // Narrow: direct parent chain
+      const inlineParent = composer.closest('[data-testid="tweetButtonInline"]')?.parentElement;
+      if (inlineParent) containers.push(inlineParent);
+      // Dialog (popup compose)
+      const dialog = composer.closest('[role="dialog"]');
+      if (dialog) containers.push(dialog);
+      // Form
+      const form = composer.closest('form');
+      if (form) containers.push(form);
+      // Primary column (standalone /compose/post page)
+      const primary = composer.closest('[data-testid="primaryColumn"]');
+      if (primary) containers.push(primary);
+      // Fallback: walk up 20 levels from composer
+      let walkUp: HTMLElement | null = composer as HTMLElement;
+      for (let i = 0; i < 20 && walkUp; i++) walkUp = walkUp.parentElement;
+      if (walkUp) containers.push(walkUp);
+      // Last resort: document body
+      if (containers.length === 0) containers.push(document.body);
 
-      // Strategy 1: Check for media-related data-testid attributes
-      const mediaTestIds = [
-        '[data-testid="attachments"]',
-        '[data-testid="tweetPhoto"]',
-        '[data-testid="videoComponent"]',
-        '[data-testid="tweetMediaImage"]',
-        '[data-testid="gifPreview"]',
-      ];
-      for (const sel of mediaTestIds) {
-        if (composerContainer.querySelector(sel)) return true;
-      }
+      for (const container of containers) {
+        // Strategy 1: data-testid media attributes
+        if (
+          container.querySelector('[data-testid="attachments"]') ||
+          container.querySelector('[data-testid="tweetPhoto"]') ||
+          container.querySelector('[data-testid="videoComponent"]') ||
+          container.querySelector('[data-testid="tweetMediaImage"]') ||
+          container.querySelector('[data-testid="gifPreview"]') ||
+          container.querySelector('[data-testid="removeMedia"]')
+        ) return true;
 
-      // Strategy 2: aria-label patterns for remove/edit media buttons
-      const ariaPatterns = [
-        '[aria-label="Remove media"]',
-        '[aria-label="Remove"]',
-        '[aria-label="Close media"]',
-        '[aria-label*="Remove"]',
-        '[aria-label*="Edit media"]',
-        '[data-testid="removeMedia"]',
-      ];
-      for (const sel of ariaPatterns) {
-        if (composerContainer.querySelector(sel)) return true;
-      }
+        // Strategy 2: aria-label patterns
+        if (
+          container.querySelector('[aria-label*="Remove"]') ||
+          container.querySelector('[aria-label*="Edit media"]') ||
+          container.querySelector('[aria-label*="Medyay"]')
+        ) return true;
 
-      // Strategy 3: Check for "Edit" or "Alt" text buttons (image alt-text or crop)
-      const buttons = composerContainer.querySelectorAll('button');
-      for (const btn of buttons) {
-        const txt = btn.textContent?.trim();
-        if (txt === 'Edit' || txt === 'Alt' || txt === 'Düzenle' || txt === 'Kaldır') {
-          return true;
-        }
-      }
+        // Strategy 3: "Edit"/"Alt"/"Tag people"/"Add a description" buttons/text
+        // "Add a description" ONLY appears when media is attached
+        const allText = container.textContent || '';
+        if (
+          allText.includes('Add a description') ||
+          allText.includes('Aciklama ekle') ||
+          allText.includes('Tag people') ||
+          allText.includes('Kisi etiketle')
+        ) return true;
 
-      // Strategy 4: Look for any large image (not an avatar or emoji)
-      const imgs = composerContainer.querySelectorAll('img');
-      for (const img of imgs) {
-        const rect = img.getBoundingClientRect();
-        // Media previews are typically 100+ px wide, avatars ~40px
-        if (rect.width > 80 && rect.height > 60) {
-          // Exclude emoji images (usually 18-24px) and profile pics
-          const src = img.getAttribute('src') || '';
-          if (!src.includes('emoji') && !src.includes('profile_images') && !src.includes('pbs.twimg.com/profile')) {
-            return true;
+        // Strategy 4: Edit/Alt buttons near media (not in timeline tweets)
+        const buttons = container.querySelectorAll('button');
+        for (const btn of buttons) {
+          const txt = btn.textContent?.trim();
+          if (txt === 'Edit' || txt === 'Alt' || txt === 'Düzenle' || txt === 'Kaldır') {
+            // Make sure this Edit button is in the compose area, not a tweet
+            const isInTweet = btn.closest('article[data-testid="tweet"]');
+            if (!isInTweet) return true;
           }
         }
-      }
 
-      // Strategy 5: Check for video elements
-      if (composerContainer.querySelector('video')) return true;
-
-      // Strategy 6: Check for a thumbnail container (GIF/video preview wrapper)
-      // X.com wraps media previews in a div with specific aspect ratio styles
-      const mediaWrappers = composerContainer.querySelectorAll('[style*="padding-bottom"]');
-      for (const wrapper of mediaWrappers) {
-        const style = (wrapper as HTMLElement).style.paddingBottom;
-        // Media wrappers have percentage-based padding (e.g. "56.25%" for 16:9)
-        if (style && style.includes('%')) {
-          const pct = parseFloat(style);
-          if (pct > 30 && pct < 200) return true;
+        // Strategy 5: Large images (not avatars/emoji/profile pics)
+        const imgs = container.querySelectorAll('img');
+        for (const img of imgs) {
+          const rect = img.getBoundingClientRect();
+          if (rect.width > 100 && rect.height > 80) {
+            const src = img.getAttribute('src') || '';
+            if (!src.includes('emoji') && !src.includes('profile_images') && !src.includes('pbs.twimg.com/profile')) {
+              // Exclude images inside timeline tweets
+              const isInTweet = img.closest('article[data-testid="tweet"]');
+              if (!isInTweet) return true;
+            }
+          }
         }
+
+        // Strategy 6: Video elements (not in timeline)
+        const videos = container.querySelectorAll('video');
+        for (const v of videos) {
+          if (!v.closest('article[data-testid="tweet"]')) return true;
+        }
+
+        // If we found media in any container, we already returned true.
+        // Only try wider containers if narrower ones didn't find media.
       }
 
       return false;
@@ -268,11 +332,20 @@ function onComposerTextChange(_composerEl: HTMLElement, text: string): void {
   latestText = text;
   latestScore = result.reachScore;
 
+  // Detect external links for forecast
+  const hasExternalLink = /https?:\/\/(?!(?:x\.com|twitter\.com|t\.co|pic\.twitter\.com))/i.test(text);
+
   if (setGlobalAnalysis) {
     setGlobalAnalysis(result);
   }
   if (setGlobalCurrentText) {
     setGlobalCurrentText(text);
+  }
+  if (setGlobalHasMedia) {
+    setGlobalHasMedia(hasMedia);
+  }
+  if (setGlobalHasExternalLink) {
+    setGlobalHasExternalLink(hasExternalLink);
   }
 
   // Update extension icon badge with current score
@@ -311,7 +384,14 @@ function init(): void {
   setupPostTracker(
     () => latestText,
     () => latestScore,
+    () => latestPredictedReach,
+    (text, score) => lockPostedScore(text, score),
   );
+
+  // Listen for forecast updates from the React component
+  window.addEventListener('reachos-forecast-update', ((e: CustomEvent) => {
+    latestPredictedReach = e.detail?.predictedReach ?? 0;
+  }) as EventListener);
 
   setupReplyCoach();
   setupXRayMode();

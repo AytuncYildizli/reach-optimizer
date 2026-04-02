@@ -10,6 +10,7 @@ const CTA_PATTERNS = [
   'how do you',
   'drop your',
   'reply with',
+  'tag someone',
 ];
 
 const RHETORICAL_PATTERNS = [
@@ -21,7 +22,11 @@ const RHETORICAL_PATTERNS = [
   "don't we all",
 ];
 
-const BOOKMARK_PATTERNS = /\d+[.)]\s|step |how to |guide|framework|checklist|template|tips for|lesson|rule/i;
+// Open-loop patterns that serve as implicit engagement drivers
+const OPEN_LOOP_ENDING = /:\s*$|—\s*$|\.\.\.\s*$/;
+const OPEN_LOOP_CONTENT = /here'?s (what|how|why)/i;
+
+const BOOKMARK_PATTERNS = /\d+[.)]\s|step |how to |guide|framework|checklist|template|tips for|lesson|rule|playbook|roadmap|system|process|blueprint|formula/i;
 
 export const ctaPresenceRule: RuleDefinition = {
   id: 'engagement-cta-presence',
@@ -32,24 +37,51 @@ export const ctaPresenceRule: RuleDefinition = {
     const text = input.text;
     const tail = text.slice(-120);
     const lowerTail = tail.toLowerCase();
+    const lowerText = text.toLowerCase();
 
     const hasQuestionMark = tail.includes('?');
     const hasCtaPattern = CTA_PATTERNS.some((pattern) => lowerTail.includes(pattern));
+
+    // Check for rhetorical questions (penalty instead of reward)
+    if (hasQuestionMark) {
+      const isRhetorical = RHETORICAL_PATTERNS.some((p) => lowerText.includes(p));
+      if (isRhetorical) {
+        return {
+          ruleId: 'engagement-cta-presence',
+          triggered: true,
+          points: -3,
+          severity: 'warning',
+          suggestion: 'Rhetorical question detected. Answerable questions drive more replies (27x algorithm weight).',
+        };
+      }
+    }
 
     if (hasQuestionMark || hasCtaPattern) {
       return {
         ruleId: 'engagement-cta-presence',
         triggered: true,
-        points: 7,
+        points: 8,
         severity: 'positive',
-        suggestion: 'Reply-triggering CTA detected — this drives conversations',
+        suggestion: 'Reply-triggering CTA detected — replies are 27x more valuable than likes',
+      };
+    }
+
+    // If an open loop is present, don't penalize for no CTA
+    // Open loops serve as implicit engagement drivers
+    const lastLine = text.split('\n').filter(l => l.trim()).pop() || '';
+    if (OPEN_LOOP_ENDING.test(lastLine) || OPEN_LOOP_CONTENT.test(text)) {
+      return {
+        ruleId: 'engagement-cta-presence',
+        triggered: false,
+        points: 0,
+        severity: 'info',
       };
     }
 
     return {
       ruleId: 'engagement-cta-presence',
       triggered: true,
-      points: -4,
+      points: -6,
       severity: 'warning',
       suggestion:
         'No call-to-action. Add a question to trigger replies (replies are 27x more valuable than likes).',
@@ -57,45 +89,7 @@ export const ctaPresenceRule: RuleDefinition = {
   },
 };
 
-export const questionTypeRule: RuleDefinition = {
-  id: 'engagement-question-type',
-  name: 'Question Type',
-  category: 'engagement',
-  runOn: 'client',
-  evaluate: (input: TweetInput): RuleResult => {
-    const text = input.text;
-
-    if (!text.includes('?')) {
-      return {
-        ruleId: 'engagement-question-type',
-        triggered: false,
-        points: 0,
-        severity: 'info',
-      };
-    }
-
-    const lowerText = text.toLowerCase();
-    const isRhetorical = RHETORICAL_PATTERNS.some((pattern) => lowerText.includes(pattern));
-
-    if (isRhetorical) {
-      return {
-        ruleId: 'engagement-question-type',
-        triggered: true,
-        points: -3,
-        severity: 'warning',
-        suggestion: 'Rhetorical question detected. Answerable questions drive more replies.',
-      };
-    }
-
-    return {
-      ruleId: 'engagement-question-type',
-      triggered: true,
-      points: 4,
-      severity: 'positive',
-      suggestion: 'Good — answerable question encourages replies',
-    };
-  },
-};
+// engagement-question-type REMOVED — merged into cta-presence above
 
 export const bookmarkValueRule: RuleDefinition = {
   id: 'engagement-bookmark-value',
@@ -110,9 +104,9 @@ export const bookmarkValueRule: RuleDefinition = {
       return {
         ruleId: 'engagement-bookmark-value',
         triggered: true,
-        points: 5,
+        points: 8,
         severity: 'positive',
-        suggestion: 'Bookmarkable content detected — bookmarks are 10-20x more valuable than likes',
+        suggestion: 'Bookmarkable content detected — bookmarks are 20x more valuable than likes',
       };
     }
 

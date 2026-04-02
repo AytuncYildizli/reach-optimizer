@@ -13,10 +13,10 @@ import {
   hashtagCountRule,
   emojiCountRule,
   threadLengthRule,
+  lineBreaksRule,
 } from './rules/structure-rules';
 import {
   ctaPresenceRule,
-  questionTypeRule,
   bookmarkValueRule,
 } from './rules/engagement-rules';
 import { engagementBaitRule, textWallRule } from './rules/penalty-rules';
@@ -30,16 +30,25 @@ import {
   openLoopRule,
   contrarianClaimRule,
   storyOpenerRule,
+  patternInterruptRule,
+  boldClaimRule,
+  listPromiseRule,
+  compoundHookRule,
 } from './rules/advanced-hook-rules';
 import {
   choiceQuestionRule,
-  directAddressRule,
   deadEndingRule,
   combativeToneRule,
-  specificNumberRule,
   mediaPresenceRule,
   grammarCheckRule,
+  hashtagPlacementRule,
+  allCapsSpamRule,
 } from './rules/reply-potential-rules';
+import {
+  sentimentToneRule,
+  readabilityRule,
+  contrastSurpriseRule,
+} from './rules/quality-signal-rules';
 
 export const allClientRules: RuleDefinition[] = [
   // Hook rules
@@ -52,17 +61,22 @@ export const allClientRules: RuleDefinition[] = [
   openLoopRule,
   contrarianClaimRule,
   storyOpenerRule,
+  patternInterruptRule,
+  boldClaimRule,
+  listPromiseRule,
+  compoundHookRule,
+  contrastSurpriseRule,
   // Structure rules
   characterLengthRule,
   hashtagCountRule,
   emojiCountRule,
   threadLengthRule,
+  lineBreaksRule,
+  readabilityRule,
   // Engagement rules
   ctaPresenceRule,
-  questionTypeRule,
   bookmarkValueRule,
   choiceQuestionRule,
-  directAddressRule,
   // Penalty rules
   linkDetectionRule,
   engagementBaitRule,
@@ -73,8 +87,10 @@ export const allClientRules: RuleDefinition[] = [
   hedgingOpenerRule,
   deadEndingRule,
   combativeToneRule,
-  // Bonus rules
-  specificNumberRule,
+  hashtagPlacementRule,
+  allCapsSpamRule,
+  // Bonus / quality rules
   mediaPresenceRule,
   grammarCheckRule,
+  sentimentToneRule,
 ];

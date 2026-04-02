@@ -8,6 +8,9 @@ const GENERIC_PATTERNS = [
   'a thread on',
   'thread:',
   "let's talk about",
+  'nobody asked but',
+  'can we talk about',
+  'i need to talk about',
 ];
 
 export const genericHookRule: RuleDefinition = {
@@ -23,7 +26,7 @@ export const genericHookRule: RuleDefinition = {
       return {
         ruleId: 'hook-generic-pattern',
         triggered: true,
-        points: -5,
+        points: -8,
         severity: 'warning',
         suggestion:
           'Generic hook detected. Try opening with a specific number, bold claim, or question.',
@@ -48,23 +51,32 @@ export const hookLengthRule: RuleDefinition = {
     const firstLine = input.text.split('\n')[0];
     const len = firstLine.length;
 
-    if (len <= 40) {
+    if (len <= 15) {
       return {
         ruleId: 'hook-length-check',
         triggered: true,
-        points: -2,
+        points: -3,
         severity: 'warning',
         suggestion: 'Hook too short — expand with specifics',
       };
     }
 
-    if (len <= 100) {
+    if (len <= 80) {
       return {
         ruleId: 'hook-length-check',
         triggered: true,
-        points: +3,
+        points: +5,
         severity: 'positive',
-        suggestion: 'Good hook length',
+        suggestion: 'Good hook length — fits in mobile preview',
+      };
+    }
+
+    if (len <= 120) {
+      return {
+        ruleId: 'hook-length-check',
+        triggered: true,
+        points: +2,
+        severity: 'info',
       };
     }
 
@@ -72,9 +84,9 @@ export const hookLengthRule: RuleDefinition = {
     return {
       ruleId: 'hook-length-check',
       triggered: true,
-      points: input.hasMedia ? -1 : -3,
+      points: input.hasMedia ? -1 : -4,
       severity: 'warning',
-      suggestion: 'Hook too long — trim to under 100 characters',
+      suggestion: 'Hook too long — trim to under 120 characters for mobile',
     };
   },
 };
@@ -94,9 +106,9 @@ export const numberDataHookRule: RuleDefinition = {
       return {
         ruleId: 'hook-number-data',
         triggered: true,
-        points: +5,
+        points: +8,
         severity: 'positive',
-        suggestion: 'Data point in hook — this drives +20-40% more engagement',
+        suggestion: 'Data point in hook — numbers stop the scroll and boost dwell time',
       };
     }
 
@@ -159,10 +171,10 @@ export const firstPersonVoiceRule: RuleDefinition = {
       return {
         ruleId: 'bonus-first-person',
         triggered: true,
-        points: +5,
+        points: +4,
         severity: 'positive',
         suggestion:
-          'First-person voice detected — this drives +23% more engagement. Keep it!',
+          'First-person voice detected — personal content outperforms generic statements',
       };
     }
 

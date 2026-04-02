@@ -11,7 +11,7 @@ export async function OPTIONS() {
 
 export async function POST(request: NextRequest) {
   // 1. Parse and validate body
-  let body: { tweetUrl?: string; content?: string; reachScore?: number; optimized?: boolean };
+  let body: { tweetUrl?: string; content?: string; reachScore?: number; predictedReach?: number; optimized?: boolean };
   try {
     body = await request.json();
   } catch {
@@ -66,6 +66,7 @@ export async function POST(request: NextRequest) {
         xTweetId,
         content: body.content,
         reachScore: body.reachScore,
+        predictedReach: body.predictedReach ?? null,
         optimized: body.optimized ?? true,
       },
     });

@@ -20,7 +20,7 @@ describe('openLoopRule', () => {
       text: "Here's what happened:\nI lost everything in 24 hours.",
     });
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(6);
+    expect(result.points).toBe(10);
     expect(result.severity).toBe('positive');
     expect(result.suggestion).toContain('Open loop');
   });
@@ -31,7 +31,7 @@ describe('openLoopRule', () => {
       text: 'And then it all changed...\nI never saw it coming.',
     });
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(6);
+    expect(result.points).toBe(10);
   });
 
   it('triggers on "here\'s what" pattern', () => {
@@ -40,7 +40,7 @@ describe('openLoopRule', () => {
       text: "Here's what nobody tells you about startups.",
     });
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(6);
+    expect(result.points).toBe(10);
   });
 
   it('does not trigger on flat opener', () => {
@@ -60,7 +60,7 @@ describe('contrarianClaimRule', () => {
       text: 'React is overrated and here is why you should switch.',
     });
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(5);
+    expect(result.points).toBe(7);
     expect(result.severity).toBe('positive');
     expect(result.suggestion).toContain('Contrarian claim');
   });
@@ -71,7 +71,7 @@ describe('contrarianClaimRule', () => {
       text: 'Nobody talks about the hidden cost of microservices.',
     });
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(5);
+    expect(result.points).toBe(7);
   });
 
   it('does not trigger on neutral statement', () => {
@@ -91,7 +91,7 @@ describe('storyOpenerRule', () => {
       text: 'Last week I made a decision that changed my entire career.',
     });
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(5);
+    expect(result.points).toBe(6);
     expect(result.severity).toBe('positive');
     expect(result.suggestion).toContain('Story opener');
   });
@@ -102,7 +102,7 @@ describe('storyOpenerRule', () => {
       text: 'Yesterday I had the worst interview of my life.',
     });
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(5);
+    expect(result.points).toBe(6);
   });
 
   it('triggers on "Back in 2019"', () => {
@@ -111,7 +111,7 @@ describe('storyOpenerRule', () => {
       text: 'Back in 2019 I quit my job with no plan. Best decision ever.',
     });
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(5);
+    expect(result.points).toBe(6);
   });
 
   it('triggers on "True story:"', () => {
@@ -120,7 +120,7 @@ describe('storyOpenerRule', () => {
       text: 'True story: I almost got fired for deploying on Friday.',
     });
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(5);
+    expect(result.points).toBe(6);
   });
 
   it('does not trigger on non-story opener', () => {

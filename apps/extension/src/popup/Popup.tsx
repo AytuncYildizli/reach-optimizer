@@ -199,6 +199,123 @@ function formatNumber(n: number): string {
 }
 
 // ---------------------------------------------------------------------------
+// AccountHealthCard — shows account health score with factors
+// ---------------------------------------------------------------------------
+interface AccountHealthData {
+  healthScore: number;
+  reachMultiplier: number;
+  isPremium: boolean;
+  followerCount: number;
+  followingCount: number;
+  factors: { name: string; score: number; maxScore: number; status: string; tip?: string }[];
+  fetchedAt: string;
+}
+
+function AccountHealthCard() {
+  const [health, setHealth] = useState<AccountHealthData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    // Check cache first
+    chrome.storage.local.get(['accountHealth'], (cached) => {
+      if (cached.accountHealth) {
+        const age = Date.now() - new Date(cached.accountHealth.fetchedAt).getTime();
+        if (age < 3600000) { // 1 hour cache
+          setHealth(cached.accountHealth);
+          setLoading(false);
+          return;
+        }
+      }
+
+      // Fetch fresh data
+      chrome.runtime.sendMessage(
+        { type: 'API_REQUEST', endpoint: '/api/account-health', method: 'GET' },
+        (response) => {
+          setLoading(false);
+          if (response?.ok && response.data?.success) {
+            const data = response.data.data;
+            setHealth(data);
+            // Cache in chrome.storage for content script to read
+            chrome.storage.local.set({ accountHealth: data });
+          }
+        },
+      );
+    });
+  }, []);
+
+  if (loading) {
+    return (
+      <div style={{ background: '#f0f7ff', borderRadius: 10, padding: 12, marginBottom: 12 }}>
+        <div style={{ fontSize: 12, color: '#666' }}>Loading account health...</div>
+      </div>
+    );
+  }
+
+  if (!health) return null;
+
+  const healthColor = health.healthScore >= 70 ? '#00ba7c'
+    : health.healthScore >= 40 ? '#ffd400' : '#f4212e';
+
+  const multiplierLabel = health.reachMultiplier >= 1
+    ? `+${Math.round((health.reachMultiplier - 1) * 100)}%`
+    : `${Math.round((health.reachMultiplier - 1) * 100)}%`;
+
+  return (
+    <div style={{ background: '#f0f7ff', borderRadius: 10, padding: 12, marginBottom: 12 }}>
+      <div
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+        onClick={() => setExpanded(!expanded)}
+      >
+        <div>
+          <div style={{ fontSize: 12, color: '#666', marginBottom: 2 }}>Account Health</div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+            <span style={{ fontSize: 22, fontWeight: 800, color: healthColor }}>{health.healthScore}</span>
+            <span style={{ fontSize: 11, color: '#666' }}>/100</span>
+            <span style={{
+              fontSize: 10, padding: '1px 6px', borderRadius: 8, fontWeight: 600,
+              background: health.reachMultiplier >= 1 ? 'rgba(0,186,124,0.15)' : 'rgba(244,33,46,0.15)',
+              color: health.reachMultiplier >= 1 ? '#00ba7c' : '#f4212e',
+            }}>
+              Reach {multiplierLabel}
+            </span>
+          </div>
+        </div>
+        <div style={{ fontSize: 10, color: '#999' }}>
+          {health.isPremium ? 'Premium' : 'Free'} {'\u00B7'} {formatNumber(health.followerCount)} followers
+        </div>
+      </div>
+
+      {expanded && (
+        <div style={{ marginTop: 10, borderTop: '1px solid #e0e8f0', paddingTop: 8 }}>
+          {health.factors.map((f, i) => {
+            const pct = Math.round((f.score / f.maxScore) * 100);
+            const barColor = f.status === 'great' ? '#00ba7c'
+              : f.status === 'good' ? '#1d9bf0'
+              : f.status === 'warning' ? '#ffd400' : '#f4212e';
+
+            return (
+              <div key={i} style={{ marginBottom: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 2 }}>
+                  <span style={{ color: '#333' }}>{f.name}</span>
+                  <span style={{ color: '#666' }}>{f.score}/{f.maxScore}</span>
+                </div>
+                <div style={{ height: 4, background: '#e0e8f0', borderRadius: 2, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${pct}%`, background: barColor, borderRadius: 2, transition: 'width 0.3s' }} />
+                </div>
+                {f.tip && (
+                  <div style={{ fontSize: 10, color: '#888', marginTop: 2, lineHeight: 1.3 }}>{f.tip}</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // StatusTab (original popup content for signed-in users)
 // ---------------------------------------------------------------------------
 function StatusTab({ user, onSignOut }: { user: UserInfo; onSignOut: () => void }) {
@@ -213,6 +330,8 @@ function StatusTab({ user, onSignOut }: { user: UserInfo; onSignOut: () => void 
           <div style={{ color: '#666', fontSize: 12 }}>@{user.xUsername}</div>
         </div>
       </div>
+
+      <AccountHealthCard />
 
       <div style={{ background: '#f5f5f5', borderRadius: 10, padding: 12, marginBottom: 12 }}>
         <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>Monthly Usage</div>

@@ -13,10 +13,10 @@ export const choiceQuestionRule: RuleDefinition = {
       return {
         ruleId: 'engagement-choice-question',
         triggered: true,
-        points: 8,
+        points: 10,
         severity: 'positive',
         suggestion:
-          'Choice question detected — low-effort replies drive conversation chains (150x algorithm weight).',
+          'Choice question — generates low-effort replies that create conversation chains (replies = 27x algorithm weight).',
       };
     }
 
@@ -29,38 +29,7 @@ export const choiceQuestionRule: RuleDefinition = {
   },
 };
 
-const DIRECT_ADDRESS =
-  /\b(what do you think|tell me|share your|drop your|reply with|tag someone)\b/i;
-
-export const directAddressRule: RuleDefinition = {
-  id: 'engagement-direct-address',
-  name: 'Direct Address CTA',
-  category: 'engagement',
-  runOn: 'client',
-  evaluate: (input: TweetInput): RuleResult => {
-    const text = input.text;
-    // Check last 50% of text (tweets are short, so 30% can be too narrow)
-    const lastThird = text.slice(Math.floor(text.length * 0.5));
-
-    if (DIRECT_ADDRESS.test(lastThird)) {
-      return {
-        ruleId: 'engagement-direct-address',
-        triggered: true,
-        points: 6,
-        severity: 'positive',
-        suggestion:
-          'Direct address CTA — explicitly asks for replies.',
-      };
-    }
-
-    return {
-      ruleId: 'engagement-direct-address',
-      triggered: false,
-      points: 0,
-      severity: 'info',
-    };
-  },
-};
+// engagement-direct-address REMOVED — merged into cta-presence
 
 const CTA_KEYWORDS =
   /(\?|what do you think|tell me|share your|drop your|reply with|tag someone|here'?s (what|how|why)|\.\.\.)/i;
@@ -95,7 +64,6 @@ export const deadEndingRule: RuleDefinition = {
     if (CTA_KEYWORDS.test(lastPortion)) return notTriggered;
 
     // Check if there are ANY engagement signals anywhere in the tweet
-    // (question anywhere, CTA pattern anywhere) — if so, don't penalize
     const hasQuestionAnywhere = /\?/.test(text);
     const hasCtaAnywhere = CTA_KEYWORDS.test(text);
     if (hasQuestionAnywhere || hasCtaAnywhere) return notTriggered;
@@ -103,16 +71,16 @@ export const deadEndingRule: RuleDefinition = {
     return {
       ruleId: 'penalty-dead-ending',
       triggered: true,
-      points: -2,
+      points: -4,
       severity: 'warning',
       suggestion:
-        'Consider adding a question or open loop to invite replies.',
+        'Dead ending — add a question or open loop to invite replies (replies = 27x a like).',
     };
   },
 };
 
 const COMBATIVE_WORDS =
-  /\b(idiot|stupid|dumb|moron|trash|garbage|shut up|stfu|gtfo)\b/i;
+  /\b(idiot|stupid|dumb|moron|trash|garbage|shut up|stfu|gtfo|brain ?dead|clown)\b/i;
 
 export const combativeToneRule: RuleDefinition = {
   id: 'penalty-combative-tone',
@@ -124,10 +92,10 @@ export const combativeToneRule: RuleDefinition = {
       return {
         ruleId: 'penalty-combative-tone',
         triggered: true,
-        points: -6,
+        points: -10,
         severity: 'critical',
         suggestion:
-          "Combative tone detected — Grok's tone analysis throttles aggressive content.",
+          "Combative tone — Grok's sentiment analysis penalizes aggressive content. Blocks/reports are -148x to -738x a like.",
       };
     }
 
@@ -140,33 +108,7 @@ export const combativeToneRule: RuleDefinition = {
   },
 };
 
-const SPECIFIC_NUMBER = /\$[\d,]+|\d+%|\d{3,}[+ ]|#?\d+\/\d+/;
-
-export const specificNumberRule: RuleDefinition = {
-  id: 'bonus-specific-number',
-  name: 'Specific Number Bonus',
-  category: 'bonus',
-  runOn: 'client',
-  evaluate: (input: TweetInput): RuleResult => {
-    if (SPECIFIC_NUMBER.test(input.text)) {
-      return {
-        ruleId: 'bonus-specific-number',
-        triggered: true,
-        points: 3,
-        severity: 'positive',
-        suggestion:
-          'Specific numbers add credibility and stop the scroll.',
-      };
-    }
-
-    return {
-      ruleId: 'bonus-specific-number',
-      triggered: false,
-      points: 0,
-      severity: 'info',
-    };
-  },
-};
+// bonus-specific-number REMOVED — merged into hook-number-data
 
 export const mediaPresenceRule: RuleDefinition = {
   id: 'bonus-media-present',
@@ -178,19 +120,20 @@ export const mediaPresenceRule: RuleDefinition = {
       return {
         ruleId: 'bonus-media-present',
         triggered: true,
-        points: 5,
+        points: 4,
         severity: 'positive',
-        suggestion: 'Media attached — images/videos get 2-10x more distribution.',
+        suggestion: 'Media attached — confirmed 2x Earlybird boost in the algorithm.',
       };
     }
-    // Only suggest adding media if tweet is long enough to be real content
-    if (input.text.length > 50) {
+    // Suggest adding media for longer content, but don't penalize heavily
+    // Research: text-only outperforms video by 30% on X because text drives more replies
+    if (input.text.length > 100) {
       return {
         ruleId: 'bonus-media-present',
         triggered: true,
-        points: -3,
-        severity: 'critical',
-        suggestion: 'ADD AN IMAGE OR VIDEO! Media gets 2-10x more reach. Screenshot, chart, meme, or short clip.',
+        points: 0,
+        severity: 'info',
+        suggestion: 'Consider adding an image — 2x algorithmic boost. But text-only can work well on X if it drives replies.',
       };
     }
     return { ruleId: 'bonus-media-present', triggered: false, points: 0, severity: 'info' };
@@ -198,8 +141,10 @@ export const mediaPresenceRule: RuleDefinition = {
 };
 
 // Common grammar/typo patterns that hurt credibility on X
+// Algorithm gives 0.01x (99% reduction) for unknown language/misspellings
+// No /g flag — .test() with /g advances lastIndex causing non-deterministic scoring
 const GRAMMAR_PATTERNS: { pattern: RegExp; fix: string; label: string }[] = [
-  { pattern: /\bi (am|was|have|had|will|would|can|could|should|want|need|think|know|like|love|hate|did|do)\b/g, fix: "I", label: "lowercase 'i'" },
+  { pattern: /\bi (am|was|have|had|will|would|can|could|should|want|need|think|know|like|love|hate|did|do)\b/i, fix: "I", label: "lowercase 'i'" },
   { pattern: /\byou're\s+(a\s+)?(right|wrong|correct|the\s+best)/i, fix: "", label: "" }, // valid usage, skip
   { pattern: /\byour\s+(a\s+|going|welcome|the\s+one\s+who|doing|right|wrong)/i, fix: "you're", label: "your → you're" },
   { pattern: /\byou're\s+(own|company|team|product|app|site|tool|brand|business|account)/i, fix: "your", label: "you're → your" },
@@ -228,7 +173,6 @@ export const grammarCheckRule: RuleDefinition = {
 
     for (const { pattern, label } of GRAMMAR_PATTERNS) {
       if (!label) continue; // skip valid-usage patterns
-      pattern.lastIndex = 0;
       if (pattern.test(text)) {
         issues.push(label);
       }
@@ -241,9 +185,59 @@ export const grammarCheckRule: RuleDefinition = {
     return {
       ruleId: 'penalty-grammar',
       triggered: true,
-      points: -Math.min(issues.length * 2, 6), // -2 per issue, max -6
+      points: -Math.min(issues.length * 3, 9), // -3 per issue, max -9
       severity: issues.length >= 3 ? 'critical' : 'warning',
-      suggestion: `Grammar: ${issues.join(', ')}. Fix these for credibility.`,
+      suggestion: `Grammar: ${issues.join(', ')}. Fix for credibility — the algorithm penalizes poor language quality.`,
     };
+  },
+};
+
+// NEW: Hashtag Placement — penalizes tweet starting with hashtag
+export const hashtagPlacementRule: RuleDefinition = {
+  id: 'penalty-hashtag-placement',
+  name: 'Hashtag Placement',
+  category: 'penalty',
+  runOn: 'client',
+  evaluate: (input: TweetInput): RuleResult => {
+    if (/^#\w+/.test(input.text)) {
+      return {
+        ruleId: 'penalty-hashtag-placement',
+        triggered: true,
+        points: -4,
+        severity: 'warning',
+        suggestion: 'Starting with a hashtag wastes your hook — algorithmic penalty confirmed.',
+      };
+    }
+
+    return { ruleId: 'penalty-hashtag-placement', triggered: false, points: 0, severity: 'info' };
+  },
+};
+
+// NEW: All-Caps Spam Detection
+export const allCapsSpamRule: RuleDefinition = {
+  id: 'penalty-all-caps-spam',
+  name: 'All-Caps Spam',
+  category: 'penalty',
+  runOn: 'client',
+  evaluate: (input: TweetInput): RuleResult => {
+    const words = input.text.split(/\s+/).filter(w => w.length >= 3);
+    if (words.length === 0) {
+      return { ruleId: 'penalty-all-caps-spam', triggered: false, points: 0, severity: 'info' };
+    }
+
+    const capsWords = words.filter(w => w === w.toUpperCase() && /[A-Z]/.test(w));
+    const capsRatio = capsWords.length / words.length;
+
+    if (capsRatio > 0.3 && capsWords.length >= 3) {
+      return {
+        ruleId: 'penalty-all-caps-spam',
+        triggered: true,
+        points: -4,
+        severity: 'warning',
+        suggestion: 'Too much ALL CAPS — confirmed algorithmic penalty. Use caps sparingly for emphasis.',
+      };
+    }
+
+    return { ruleId: 'penalty-all-caps-spam', triggered: false, points: 0, severity: 'info' };
   },
 };

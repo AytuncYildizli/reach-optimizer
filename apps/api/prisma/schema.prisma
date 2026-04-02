@@ -32,6 +32,7 @@ model User {
   monthlyUsageCount   Int              @default(0) @map("monthly_usage_count")
   usageResetAt        DateTime         @default(now()) @map("usage_reset_at")
   personalizedWeights Json?            @map("personalized_weights")
+  forecastCalibration Json?            @map("forecast_calibration")
   createdAt           DateTime         @default(now()) @map("created_at")
   updatedAt           DateTime         @updatedAt @map("updated_at")
 
@@ -64,17 +65,18 @@ model Analysis {
 }
 
 model TrackedTweet {
-  id          String   @id @default(uuid())
-  userId      String?  @map("user_id")
-  tweetUrl    String   @map("tweet_url")
-  xTweetId    String?  @map("x_tweet_id")
-  content     String
-  reachScore  Int      @map("reach_score")
-  optimized   Boolean  @default(true)
-  postedAt    DateTime @default(now()) @map("posted_at")
-  createdAt   DateTime @default(now()) @map("created_at")
-  user        User?    @relation(fields: [userId], references: [id])
-  metrics     TweetMetric[]
+  id              String   @id @default(uuid())
+  userId          String?  @map("user_id")
+  tweetUrl        String   @map("tweet_url")
+  xTweetId        String?  @map("x_tweet_id")
+  content         String
+  reachScore      Int      @map("reach_score")
+  predictedReach  Int?     @map("predicted_reach")
+  optimized       Boolean  @default(true)
+  postedAt        DateTime @default(now()) @map("posted_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  user            User?    @relation(fields: [userId], references: [id])
+  metrics         TweetMetric[]
 
   @@index([userId])
   @@index([xTweetId])

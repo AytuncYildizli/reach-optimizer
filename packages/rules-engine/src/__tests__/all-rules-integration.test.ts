@@ -3,8 +3,8 @@ import { ScoreEngine } from '../engine';
 import { allClientRules } from '../all-client-rules';
 
 describe('allClientRules registry', () => {
-  it('contains 29 rules', () => {
-    expect(allClientRules).toHaveLength(29);
+  it('contains 36 rules', () => {
+    expect(allClientRules).toHaveLength(36);
   });
 
   it('every rule has required fields', () => {
@@ -32,9 +32,9 @@ describe('ScoreEngine with all client rules', () => {
       isThread: false,
       hasMedia: false,
     });
-    // Short text: hookLength -2, charLength -2, no CTA -4 -> all flow to penalties
-    // Score = 45 + penalties -> well below 45
-    expect(result.reachScore).toBeLessThan(45);
+    // Short text: hookLength -3, charLength -5, no CTA -6 -> all flow to penalties
+    // Score = 30 + penalties -> well below 30
+    expect(result.reachScore).toBeLessThan(30);
     expect(result.breakdown.penalties).toBeLessThan(0);
   });
 
@@ -47,9 +47,9 @@ describe('ScoreEngine with all client rules', () => {
       isThread: false,
       hasMedia: false,
     });
-    // Generic hook -5 (hook, clamped to 0), link -12 (penalty), engagement bait -10 (penalty)
-    // Penalties heavily stack; score well below 45
-    expect(result.reachScore).toBeLessThanOrEqual(35);
+    // Generic hook -8 (hook, clamped to 0), link -8 (penalty), engagement bait -12 (penalty)
+    // Penalties stack heavily; score in critical/below_average range
+    expect(result.reachScore).toBeLessThanOrEqual(25);
     expect(result.suggestions.length).toBeGreaterThanOrEqual(3);
   });
 
@@ -62,10 +62,10 @@ describe('ScoreEngine with all client rules', () => {
       isThread: false,
       hasMedia: false,
     });
-    // firstPerson +5 (bonus), numberData +5 (hook), CTA +7 (engagement),
-    // questionType +4 (engagement), good char length (101-280 = +2 structure),
-    // hookLength 41-100 = +3 (structure), bookmarkValue possibly triggered
-    // Score should be well above base 45
+    // firstPerson +4 (bonus), numberData +8 (hook), CTA +8 (engagement),
+    // good char length (111-200 = +4 structure), hookLength 16-80 = +5 (structure),
+    // storyOpener +6 (hook), openLoop +10 (hook), bookmarkValue +8 (engagement)
+    // Score should be well above base 30
     expect(result.reachScore).toBeGreaterThanOrEqual(60);
   });
 
@@ -77,7 +77,7 @@ describe('ScoreEngine with all client rules', () => {
       threadLength: 8,
       hasMedia: false,
     });
-    // threadLength 7-12 -> +5 structure
+    // threadLength 5-8 -> +6 structure
     expect(result.breakdown.structure).toBeGreaterThan(0);
   });
 
@@ -115,7 +115,7 @@ describe('ScoreEngine with all client rules', () => {
       isThread: false,
       hasMedia: false,
     });
-    // textWall -5 (penalty), charLength -4 (structure, clamped to 0)
+    // textWall -7 (penalty), charLength -6 (structure, clamped to 0)
     expect(result.breakdown.penalties).toBeLessThan(0);
   });
 });

@@ -23,7 +23,7 @@ describe('genericHookRule', () => {
     });
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-5);
+    expect(result.points).toBe(-8);
     expect(result.severity).toBe('warning');
     expect(result.suggestion).toContain('Generic hook detected');
   });
@@ -40,38 +40,48 @@ describe('genericHookRule', () => {
 });
 
 describe('hookLengthRule', () => {
-  it('penalizes short hooks under 40 chars', () => {
+  it('penalizes very short hooks (<=15 chars)', () => {
     const result = hookLengthRule.evaluate({
       ...baseInput,
       text: 'Short hook here',
     });
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-2);
+    expect(result.points).toBe(-3);
     expect(result.severity).toBe('warning');
     expect(result.suggestion).toContain('too short');
   });
 
-  it('rewards good length hooks (41-100 chars)', () => {
+  it('rewards good length hooks (16-80 chars)', () => {
     const result = hookLengthRule.evaluate({
       ...baseInput,
       text: 'I spent 6 months building a product that changed everything for me',
     });
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(+3);
+    expect(result.points).toBe(+5);
     expect(result.severity).toBe('positive');
     expect(result.suggestion).toContain('Good hook length');
   });
 
-  it('penalizes hooks over 100 chars', () => {
+  it('gives moderate bonus for 81-120 char hooks', () => {
+    const result = hookLengthRule.evaluate({
+      ...baseInput,
+      text: 'I spent 6 months building a product that changed everything about how I approach my morning routine daily',
+    });
+
+    expect(result.triggered).toBe(true);
+    expect(result.points).toBe(+2);
+  });
+
+  it('penalizes hooks over 120 chars', () => {
     const result = hookLengthRule.evaluate({
       ...baseInput,
       text: 'This is a very long hook that goes on and on and on and keeps going because the author just cannot stop writing more words here please',
     });
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-3);
+    expect(result.points).toBe(-4);
     expect(result.severity).toBe('warning');
     expect(result.suggestion).toContain('too long');
   });
@@ -85,7 +95,7 @@ describe('numberDataHookRule', () => {
     });
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(+5);
+    expect(result.points).toBe(+8);
     expect(result.severity).toBe('positive');
     expect(result.suggestion).toContain('Data point in hook');
   });
@@ -97,7 +107,7 @@ describe('numberDataHookRule', () => {
     });
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(+5);
+    expect(result.points).toBe(+8);
     expect(result.severity).toBe('positive');
   });
 
@@ -165,7 +175,7 @@ describe('firstPersonVoiceRule', () => {
     });
 
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(+5);
+    expect(result.points).toBe(+4);
     expect(result.severity).toBe('positive');
     expect(result.suggestion).toContain('First-person voice');
   });

@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   choiceQuestionRule,
-  directAddressRule,
   deadEndingRule,
   combativeToneRule,
-  specificNumberRule,
+  hashtagPlacementRule,
+  allCapsSpamRule,
 } from '../../rules/reply-potential-rules';
 import type { TweetInput } from '@reach/shared-types';
 
@@ -22,7 +22,7 @@ describe('choiceQuestionRule', () => {
       text: 'Which framework do you prefer for building APIs?',
     });
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(8);
+    expect(result.points).toBe(10);
     expect(result.severity).toBe('positive');
     expect(result.suggestion).toContain('Choice question');
   });
@@ -33,7 +33,7 @@ describe('choiceQuestionRule', () => {
       text: 'React or Vue? Pick one and explain why?',
     });
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(8);
+    expect(result.points).toBe(10);
   });
 
   it('does not trigger without question mark', () => {
@@ -46,47 +46,16 @@ describe('choiceQuestionRule', () => {
   });
 });
 
-describe('directAddressRule', () => {
-  it('triggers on "what do you think" in last 30% of text', () => {
-    const result = directAddressRule.evaluate({
-      ...baseInput,
-      text: 'AI in code review. What do you think?',
-    });
-    expect(result.triggered).toBe(true);
-    expect(result.points).toBe(6);
-    expect(result.severity).toBe('positive');
-    expect(result.suggestion).toContain('Direct address');
-  });
-
-  it('triggers on "share your" at the end', () => {
-    const result = directAddressRule.evaluate({
-      ...baseInput,
-      text: 'Failing taught me everything. Share your lesson.',
-    });
-    expect(result.triggered).toBe(true);
-    expect(result.points).toBe(6);
-  });
-
-  it('does not trigger when CTA is only in the first part', () => {
-    const result = directAddressRule.evaluate({
-      ...baseInput,
-      text: 'Tell me why you think this is important. Anyway, I shipped my new project today and it went well.',
-    });
-    expect(result.triggered).toBe(false);
-    expect(result.points).toBe(0);
-  });
-});
-
 describe('deadEndingRule', () => {
-  it('triggers on flat ending with no CTA and no engagement signals (long tweet)', () => {
+  it('triggers on flat ending with no CTA (long tweet)', () => {
     const result = deadEndingRule.evaluate({
       ...baseInput,
       text: 'I spent 6 months building a SaaS product and learned a lot about marketing along the way.',
     });
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-2);
+    expect(result.points).toBe(-4);
     expect(result.severity).toBe('warning');
-    expect(result.suggestion).toContain('question or open loop');
+    expect(result.suggestion).toContain('Dead ending');
   });
 
   it('does not trigger on short punchy tweets (<71 chars)', () => {
@@ -115,15 +84,6 @@ describe('deadEndingRule', () => {
     expect(result.triggered).toBe(false);
     expect(result.points).toBe(0);
   });
-
-  it('does not trigger when tweet has a question anywhere', () => {
-    const result = deadEndingRule.evaluate({
-      ...baseInput,
-      text: 'Ever wonder why some products grow fast? I spent 6 months building a SaaS and learned the answer.',
-    });
-    expect(result.triggered).toBe(false);
-    expect(result.points).toBe(0);
-  });
 });
 
 describe('combativeToneRule', () => {
@@ -133,7 +93,7 @@ describe('combativeToneRule', () => {
       text: 'This take is so stupid it hurts my brain.',
     });
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-6);
+    expect(result.points).toBe(-10);
     expect(result.severity).toBe('critical');
     expect(result.suggestion).toContain('Combative tone');
   });
@@ -144,7 +104,7 @@ describe('combativeToneRule', () => {
       text: 'Just shut up about Web3 already. Nobody cares.',
     });
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(-6);
+    expect(result.points).toBe(-10);
   });
 
   it('does not trigger on constructive criticism', () => {
@@ -157,42 +117,40 @@ describe('combativeToneRule', () => {
   });
 });
 
-describe('specificNumberRule', () => {
-  it('triggers on "$50k"', () => {
-    const result = specificNumberRule.evaluate({
+describe('hashtagPlacementRule', () => {
+  it('penalizes tweet starting with hashtag', () => {
+    const result = hashtagPlacementRule.evaluate({
       ...baseInput,
-      text: 'I made $50k from a side project in 6 months.',
+      text: '#AI is going to change everything about how we work.',
     });
     expect(result.triggered).toBe(true);
-    expect(result.points).toBe(3);
-    expect(result.severity).toBe('positive');
-    expect(result.suggestion).toContain('Specific numbers');
+    expect(result.points).toBe(-4);
   });
 
-  it('triggers on "47%"', () => {
-    const result = specificNumberRule.evaluate({
+  it('does not trigger when hashtag is mid-tweet', () => {
+    const result = hashtagPlacementRule.evaluate({
       ...baseInput,
-      text: 'Conversion rate improved by 47% after the redesign.',
-    });
-    expect(result.triggered).toBe(true);
-    expect(result.points).toBe(3);
-  });
-
-  it('triggers on "8/10"', () => {
-    const result = specificNumberRule.evaluate({
-      ...baseInput,
-      text: 'I would rate this experience an 8/10 overall.',
-    });
-    expect(result.triggered).toBe(true);
-    expect(result.points).toBe(3);
-  });
-
-  it('does not trigger on text without specific numbers', () => {
-    const result = specificNumberRule.evaluate({
-      ...baseInput,
-      text: 'Building cool stuff every day.',
+      text: 'Working on some #AI projects this weekend.',
     });
     expect(result.triggered).toBe(false);
-    expect(result.points).toBe(0);
+  });
+});
+
+describe('allCapsSpamRule', () => {
+  it('penalizes excessive ALL CAPS', () => {
+    const result = allCapsSpamRule.evaluate({
+      ...baseInput,
+      text: 'THIS IS THE BEST THING EVER MADE FOR DEVELOPERS WHO CODE',
+    });
+    expect(result.triggered).toBe(true);
+    expect(result.points).toBe(-4);
+  });
+
+  it('does not trigger on normal text with one caps word', () => {
+    const result = allCapsSpamRule.evaluate({
+      ...baseInput,
+      text: 'This is absolutely AMAZING work from the team.',
+    });
+    expect(result.triggered).toBe(false);
   });
 });
