@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const API_BASE = 'https://reach-optimizer.vercel.app'; // TODO: env-based
+const DEFAULT_API_BASE = 'https://reach-optimizer.vercel.app';
 
 interface UserInfo {
   xUsername: string;
@@ -173,7 +173,7 @@ function MyTweets() {
       })}
 
       <a
-        href={`${API_BASE}/dashboard`}
+        href={`${DEFAULT_API_BASE}/dashboard`}
         target="_blank"
         rel="noopener noreferrer"
         style={{
@@ -386,13 +386,123 @@ function StatusTab({ user, onSignOut }: { user: UserInfo; onSignOut: () => void 
 }
 
 // ---------------------------------------------------------------------------
+// SettingsTab — BYOK: configure your own API server URL
+// ---------------------------------------------------------------------------
+function SettingsTab() {
+  const [apiBase, setApiBase] = useState('');
+  const [saved, setSaved] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<'ok' | 'fail' | null>(null);
+
+  useEffect(() => {
+    chrome.runtime.sendMessage({ type: 'GET_SETTINGS' }, (response) => {
+      if (response?.apiBase) setApiBase(response.apiBase);
+    });
+  }, []);
+
+  const handleSave = () => {
+    const url = apiBase.trim().replace(/\/+$/, ''); // strip trailing slashes
+    chrome.runtime.sendMessage({ type: 'SET_SETTINGS', apiBase: url }, () => {
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    });
+  };
+
+  const handleTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    const url = apiBase.trim().replace(/\/+$/, '') || DEFAULT_API_BASE;
+    try {
+      const res = await fetch(`${url}/api/health`);
+      const data = await res.json();
+      setTestResult(data?.status === 'ok' ? 'ok' : 'fail');
+    } catch {
+      setTestResult('fail');
+    }
+    setTesting(false);
+  };
+
+  const handleReset = () => {
+    setApiBase(DEFAULT_API_BASE);
+    chrome.runtime.sendMessage({ type: 'SET_SETTINGS', apiBase: '' });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  return (
+    <div style={{ padding: 16 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Server Settings</div>
+
+      <div style={{ fontSize: 11, color: '#666', marginBottom: 8, lineHeight: 1.5 }}>
+        BYOK: Deploy your own API server and point ReachOS to it. Leave empty to use the default hosted instance.
+      </div>
+
+      <label style={{ fontSize: 11, color: '#333', fontWeight: 600 }}>API Server URL</label>
+      <input
+        type="url"
+        value={apiBase}
+        onChange={(e) => setApiBase(e.target.value)}
+        placeholder={DEFAULT_API_BASE}
+        style={{
+          width: '100%',
+          padding: '8px 10px',
+          border: '1px solid #ddd',
+          borderRadius: 8,
+          fontSize: 12,
+          marginTop: 4,
+          marginBottom: 8,
+          boxSizing: 'border-box',
+        }}
+      />
+
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+        <button onClick={handleSave} style={{
+          flex: 1, padding: '8px 12px', background: '#1d9bf0', color: '#fff',
+          border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+        }}>
+          {saved ? 'Saved!' : 'Save'}
+        </button>
+        <button onClick={handleTest} disabled={testing} style={{
+          flex: 1, padding: '8px 12px', background: '#f5f5f5', color: '#333',
+          border: '1px solid #ddd', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+        }}>
+          {testing ? 'Testing...' : 'Test Connection'}
+        </button>
+      </div>
+
+      {testResult === 'ok' && (
+        <div style={{ background: '#e6f9f0', border: '1px solid #00ba7c', borderRadius: 8, padding: 8, fontSize: 11, color: '#00754d', marginBottom: 8 }}>
+          Connected successfully.
+        </div>
+      )}
+      {testResult === 'fail' && (
+        <div style={{ background: '#fee', border: '1px solid #fcc', borderRadius: 8, padding: 8, fontSize: 11, color: '#c00', marginBottom: 8 }}>
+          Connection failed. Check the URL and make sure /api/health returns ok.
+        </div>
+      )}
+
+      <button onClick={handleReset} style={{
+        width: '100%', padding: '6px 12px', background: 'transparent', color: '#999',
+        border: '1px solid #eee', borderRadius: 8, fontSize: 11, cursor: 'pointer',
+      }}>
+        Reset to default
+      </button>
+
+      <div style={{ marginTop: 16, borderTop: '1px solid #eee', paddingTop: 12, fontSize: 10, color: '#999', lineHeight: 1.5 }}>
+        Without a server, ReachOS still scores your tweets locally using 35 rules. AI features (slop detection, auto-optimize, suggestions) require a server with an Anthropic API key.
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Popup (main export)
 // ---------------------------------------------------------------------------
 export function Popup() {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'status' | 'tweets'>('status');
+  const [activeTab, setActiveTab] = useState<'status' | 'tweets' | 'settings'>('status');
 
   useEffect(() => {
     // Check for existing auth
@@ -415,8 +525,10 @@ export function Popup() {
     setLoading(true);
 
     try {
-      // 1. Get auth URL from API
-      const loginRes = await fetch(`${API_BASE}/api/auth/login`);
+      // 1. Get auth URL from API (use configured server)
+      const stored = await chrome.storage.local.get('apiBase');
+      const apiBase = (stored.apiBase as string) || DEFAULT_API_BASE;
+      const loginRes = await fetch(`${apiBase}/api/auth/login`);
       const loginData = await loginRes.json();
 
       if (!loginData.authUrl) {
@@ -467,58 +579,89 @@ export function Popup() {
           <button style={tabStyle(activeTab === 'tweets')} onClick={() => setActiveTab('tweets')}>
             My Tweets
           </button>
+          <button style={tabStyle(activeTab === 'settings')} onClick={() => setActiveTab('settings')}>
+            Settings
+          </button>
         </div>
         {activeTab === 'status' ? (
           <StatusTab user={user} onSignOut={handleSignOut} />
-        ) : (
+        ) : activeTab === 'tweets' ? (
           <MyTweets />
+        ) : (
+          <SettingsTab />
         )}
       </div>
     );
   }
 
   // Signed-out view
-  return (
-    <div style={{ padding: 20 }}>
-      <h1 style={{ fontSize: 18, margin: '0 0 4px', fontWeight: 800 }}>ReachOS</h1>
-      <p style={{ fontSize: 12, color: '#666', margin: '0 0 16px' }}>
-        Content Reach Optimizer
-      </p>
-      <p style={{ fontSize: 12, color: '#333', margin: '0 0 16px', lineHeight: 1.5 }}>
-        Analyze your tweets against algorithm signals. Get a real-time Reach Score and actionable suggestions.
-      </p>
-
-      {error && (
-        <div style={{
-          background: '#fee',
-          border: '1px solid #fcc',
-          borderRadius: 8,
-          padding: 8,
-          fontSize: 11,
-          color: '#c00',
-          marginBottom: 12
-        }}>
-          {error}
+  if (activeTab === 'settings') {
+    return (
+      <div style={{ width: 320 }}>
+        <div style={tabBarStyle}>
+          <button style={tabStyle(false)} onClick={() => setActiveTab('status')}>
+            Home
+          </button>
+          <button style={tabStyle(true)} onClick={() => setActiveTab('settings')}>
+            Settings
+          </button>
         </div>
-      )}
+        <SettingsTab />
+      </div>
+    );
+  }
 
-      <button onClick={handleSignIn} style={{
-        width: '100%',
-        padding: '10px 16px',
-        background: '#1d9bf0',
-        color: '#fff',
-        border: 'none',
-        borderRadius: 20,
-        fontSize: 14,
-        fontWeight: 600,
-        cursor: 'pointer',
-      }}>
-        Sign in with X
-      </button>
+  return (
+    <div style={{ width: 320 }}>
+      <div style={tabBarStyle}>
+        <button style={tabStyle(true)} onClick={() => setActiveTab('status')}>
+          Home
+        </button>
+        <button style={tabStyle(false)} onClick={() => setActiveTab('settings')}>
+          Settings
+        </button>
+      </div>
+      <div style={{ padding: 20 }}>
+        <h1 style={{ fontSize: 18, margin: '0 0 4px', fontWeight: 800 }}>ReachOS</h1>
+        <p style={{ fontSize: 12, color: '#666', margin: '0 0 16px' }}>
+          Open-source Content Reach Optimizer
+        </p>
+        <p style={{ fontSize: 12, color: '#333', margin: '0 0 16px', lineHeight: 1.5 }}>
+          Scores your tweets against 35 algorithm-research-backed rules. Sign in for AI features, or configure your own server in Settings.
+        </p>
 
-      <p style={{ fontSize: 10, color: '#999', textAlign: 'center', marginTop: 12 }}>
-        Free plan: 3 analyses/month
-      </p>
+        {error && (
+          <div style={{
+            background: '#fee',
+            border: '1px solid #fcc',
+            borderRadius: 8,
+            padding: 8,
+            fontSize: 11,
+            color: '#c00',
+            marginBottom: 12
+          }}>
+            {error}
+          </div>
+        )}
+
+        <button onClick={handleSignIn} style={{
+          width: '100%',
+          padding: '10px 16px',
+          background: '#1d9bf0',
+          color: '#fff',
+          border: 'none',
+          borderRadius: 20,
+          fontSize: 14,
+          fontWeight: 600,
+          cursor: 'pointer',
+        }}>
+          Sign in with X
+        </button>
+
+        <p style={{ fontSize: 10, color: '#999', textAlign: 'center', marginTop: 12 }}>
+          Local scoring works without sign-in. AI features require a server.
+        </p>
+      </div>
     </div>
   );
 }

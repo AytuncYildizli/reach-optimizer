@@ -1,6 +1,12 @@
-const API_BASE = "https://reach-optimizer.vercel.app";
+const DEFAULT_API_BASE = "https://reach-optimizer.vercel.app";
 
-type MessageType = "GET_AUTH_TOKEN" | "SET_AUTH_TOKEN" | "API_REQUEST" | "UPDATE_BADGE";
+type MessageType = "GET_AUTH_TOKEN" | "SET_AUTH_TOKEN" | "API_REQUEST" | "UPDATE_BADGE" | "GET_SETTINGS" | "SET_SETTINGS";
+
+/** Read the user-configured API URL, falling back to default */
+async function getApiBase(): Promise<string> {
+  const result = await chrome.storage.local.get("apiBase");
+  return (result.apiBase as string) || DEFAULT_API_BASE;
+}
 
 interface Message {
   type: MessageType;
@@ -56,6 +62,20 @@ chrome.runtime.onMessage.addListener(
         return true;
       }
 
+      case "GET_SETTINGS":
+        chrome.storage.local.get(["apiBase"], (result) => {
+          sendResponse({ apiBase: result.apiBase || DEFAULT_API_BASE });
+        });
+        return true;
+
+      case "SET_SETTINGS": {
+        const apiBase = (message as { type: string; apiBase: string }).apiBase;
+        chrome.storage.local.set({ apiBase: apiBase || "" }, () => {
+          sendResponse({ success: true });
+        });
+        return true;
+      }
+
       default:
         sendResponse({ error: "Unknown message type" });
     }
@@ -68,6 +88,7 @@ async function handleApiRequest(
   body?: unknown
 ): Promise<unknown> {
   try {
+    const apiBase = await getApiBase();
     const result = await chrome.storage.local.get("authToken");
     const token = result.authToken as string | undefined;
 
@@ -79,7 +100,7 @@ async function handleApiRequest(
       headers["Authorization"] = `Bearer ${token}`;
     }
 
-    const response = await fetch(`${API_BASE}${endpoint}`, {
+    const response = await fetch(`${apiBase}${endpoint}`, {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
