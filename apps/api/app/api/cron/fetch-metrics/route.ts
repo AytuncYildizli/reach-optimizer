@@ -1,12 +1,15 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@lib/db';
 import { env } from '@lib/env';
+import { verifyCronAuth } from '@lib/cron-auth';
 import { calculateOutcomeScore } from '@lib/outcome-scorer';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const denied = verifyCronAuth(request);
+  if (denied) return denied;
   if (!env.TWITTER_API_IO_KEY) {
     return NextResponse.json(
       { success: false, error: 'Twitter API not configured', code: 'INTERNAL_ERROR' },

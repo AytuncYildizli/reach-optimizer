@@ -173,8 +173,14 @@ function MyTweets() {
       })}
 
       <a
-        href={`${DEFAULT_API_BASE}/dashboard`}
-        target="_blank"
+        href="#"
+        onClick={(e) => {
+          e.preventDefault();
+          chrome.storage.local.get('apiBase', (r) => {
+            const base = (r.apiBase as string) || DEFAULT_API_BASE;
+            window.open(`${base}/dashboard`, '_blank');
+          });
+        }}
         rel="noopener noreferrer"
         style={{
           display: 'block',
@@ -383,18 +389,26 @@ function SettingsTab() {
     });
   };
 
-  const handleTest = async () => {
+  const handleTest = () => {
     setTesting(true);
     setTestResult(null);
     const url = apiBase.trim().replace(/\/+$/, '') || DEFAULT_API_BASE;
-    try {
-      const res = await fetch(`${url}/api/health`);
-      const data = await res.json();
-      setTestResult(data?.status === 'ok' ? 'ok' : 'fail');
-    } catch {
-      setTestResult('fail');
-    }
-    setTesting(false);
+    // Route through service worker to avoid CORS issues
+    chrome.runtime.sendMessage(
+      { type: 'API_REQUEST', endpoint: '/api/health', method: 'GET' },
+      (response) => {
+        setTesting(false);
+        if (response?.ok && response.data?.status === 'ok') {
+          setTestResult('ok');
+        } else {
+          // Fallback: try direct fetch (works for same-origin)
+          fetch(`${url}/api/health`)
+            .then(r => r.json())
+            .then(d => setTestResult(d?.status === 'ok' ? 'ok' : 'fail'))
+            .catch(() => setTestResult('fail'));
+        }
+      },
+    );
   };
 
   const handleReset = () => {

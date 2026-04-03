@@ -109,7 +109,10 @@ export async function GET(request: NextRequest) {
   }
 
   // Get PKCE verifier from cookie (set during /api/auth/login)
-  const codeVerifier = request.cookies.get('x_pkce_verifier')?.value || 'challenge';
+  const codeVerifier = request.cookies.get('x_pkce_verifier')?.value || '';
+  if (!codeVerifier) {
+    return new NextResponse('Missing PKCE verifier — cookies may be blocked', { status: 400 });
+  }
 
   try {
     const result = await handleOAuthCallback(code, codeVerifier);
@@ -169,7 +172,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Extension-initiated flow uses plain verifier (no cookie available)
-    const codeVerifier = body.code_verifier || 'challenge';
+    const codeVerifier = body.code_verifier || '';
     const result = await handleOAuthCallback(body.code, codeVerifier);
 
     if (!('token' in result)) {

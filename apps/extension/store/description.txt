@@ -38,7 +38,7 @@ BYOK (Bring Your Own Keys): Deploy your own API server or use the hosted instanc
 
 --- BACKED BY RESEARCH ---
 
-35 rules, 132 tests. Every rule is derived from the open-sourced X algorithm (twitter/the-algorithm), viral pattern analysis, and platform signal research. Not guesswork.
+36 rules, 132 tests. Every rule is derived from the open-sourced X algorithm (twitter/the-algorithm), viral pattern analysis, and platform signal research. Not guesswork.
 
 Key signals: Reply = 27x a like. Bookmark = 20x. Media = 2x Earlybird boost. External links = -30 to -50% reach. 3+ hashtags = -40% engagement.
 

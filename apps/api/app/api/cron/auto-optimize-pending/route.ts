@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { env } from '@lib/env';
+import { verifyCronAuth } from '@lib/cron-auth';
 import { ScoreEngine, allClientRules } from '@reach/rules-engine';
 import pg from 'pg';
 
@@ -8,7 +9,9 @@ export const maxDuration = 300; // 5 min for batch processing
 
 const engine = new ScoreEngine(allClientRules);
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const denied = verifyCronAuth(request);
+  if (denied) return denied;
   if (!env.OPS_DATABASE_URL) {
     return NextResponse.json({ error: 'OPS_DATABASE_URL not configured' }, { status: 503 });
   }
