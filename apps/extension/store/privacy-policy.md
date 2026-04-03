@@ -27,7 +27,7 @@ ReachOS is an open-source browser extension that analyzes tweet text you type on
 ## Self-Hosted Architecture
 
 ReachOS is fully open source (MIT license). You can:
-- Use it with local scoring only (no server needed, 35 rules run on your device)
+- Use it with local scoring only (no server needed, 36 rules run on your device)
 - Deploy your own API server and point the extension to it
 - Inspect all source code at github.com/AytuncYildizli/reach-optimizer
 
