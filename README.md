@@ -29,7 +29,7 @@ ReachOS says: "This will reach ~14,200 people.
 ### Score Overlay + Reach Forecast
 Real-time 0-100 score as you type in the X.com composer. Breakdown bars for Hook, Structure, Engagement, Penalties, and Bonuses. Reach Forecast predicts impressions with interactive what-if scenarios.
 
-![Score Overlay with Reach Forecast](docs/screenshots/overlay-score-forecast.png)
+![ReachOS Demo](docs/screenshots/reachos-demo.gif)
 
 ### X-Ray Mode
 Scores every tweet on your timeline as you scroll. Color-coded pills (red/orange/yellow/green/blue/purple) show reach potential at a glance.

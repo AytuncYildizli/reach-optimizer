@@ -1,0 +1,30 @@
+{
+  "name": "@reach/api",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 3100",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@reach/shared-types": "workspace:*",
+    "@reach/rules-engine": "workspace:*",
+    "@reach/ai-checks": "workspace:*",
+    "@prisma/client": "^6.0.0",
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "jose": "^6.0.0",
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.0",
+    "@types/react": "^19.0.0",
+    "prisma": "^6.0.0"
+  }
+}

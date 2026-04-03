@@ -103,7 +103,7 @@ function MyTweets() {
   if (error) {
     return (
       <div style={{ padding: 20, textAlign: 'center', color: '#999', fontSize: 12 }}>
-        Could not load tweets. Sign in and post with ReachOS active to start tracking.
+        No tracked tweets yet. Post a tweet while ReachOS is active to start tracking.
       </div>
     );
   }
@@ -334,40 +334,15 @@ function StatusTab({ user, onSignOut }: { user: UserInfo; onSignOut: () => void 
       <AccountHealthCard />
 
       <div style={{ background: '#f5f5f5', borderRadius: 10, padding: 12, marginBottom: 12 }}>
-        <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>Monthly Usage</div>
+        <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>AI Analyses Used</div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
           <span style={{ fontSize: 24, fontWeight: 800 }}>{user.monthlyUsageCount}</span>
-          <span style={{ fontSize: 12, color: '#666' }}>/ {user.monthlyUsageLimit} analyses</span>
+          <span style={{ fontSize: 12, color: '#666' }}>this month</span>
         </div>
-        <div style={{ marginTop: 6, height: 4, background: '#ddd', borderRadius: 2, overflow: 'hidden' }}>
-          <div style={{
-            height: '100%',
-            width: `${Math.min(100, (user.monthlyUsageCount / user.monthlyUsageLimit) * 100)}%`,
-            background: user.monthlyUsageCount >= user.monthlyUsageLimit ? '#f4212e' : '#00ba7c',
-            borderRadius: 2,
-            transition: 'width 0.3s ease',
-          }} />
+        <div style={{ fontSize: 10, color: '#999', marginTop: 4 }}>
+          Local scoring is always unlimited. AI features use your configured server.
         </div>
       </div>
-
-      <div style={{ background: '#f5f5f5', borderRadius: 10, padding: 12, marginBottom: 12 }}>
-        <div style={{ fontSize: 12, color: '#666' }}>Plan</div>
-        <div style={{ fontSize: 14, fontWeight: 600, textTransform: 'capitalize' }}>{user.subscriptionTier}</div>
-      </div>
-
-      {user.monthlyUsageCount >= user.monthlyUsageLimit && (
-        <div style={{
-          background: '#fff3cd',
-          border: '1px solid #ffc107',
-          borderRadius: 10,
-          padding: 10,
-          fontSize: 12,
-          marginBottom: 12,
-          color: '#856404'
-        }}>
-          Usage limit reached. Upgrade for more analyses.
-        </div>
-      )}
 
       <button onClick={onSignOut} style={{
         width: '100%',
