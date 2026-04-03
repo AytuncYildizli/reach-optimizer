@@ -1,34 +1,45 @@
-ReachOS — Real-time Reach Score for every tweet you write.
+ReachOS - Know your reach before you post.
 
-Know your reach potential before you hit post. ReachOS analyzes your tweet against 29 algorithm-research-backed rules and gives you a 0-100 Reach Score in real time.
+Open-source Chrome extension that scores your tweets in real time against 35 algorithm-research-backed rules, predicts your reach, and shows you exactly how to improve it. BYOK (Bring Your Own Keys) - fully self-hostable.
 
 --- FEATURES ---
 
-Score Overlay: A live 0-100 score appears right on X.com as you type. See breakdowns for Hook, Structure, Engagement, Penalties, and Bonuses.
+Score Overlay: A live 0-100 Reach Score appears on X.com as you type. Breakdown bars show Hook, Structure, Engagement, Penalties, and Bonuses in real time.
 
-AI Auto-Optimize: One click runs 5 rounds of iterative AI rewriting to find the highest-reach version of your tweet. Copy the best variation instantly.
+Reach Forecast: Predicts how many impressions your tweet will get. Shows reply probability, bookmark chance, and viral breakout percentage.
 
-Actionable Suggestions: Get specific, prioritized suggestions — fix weak hooks, improve structure, remove penalty-triggering patterns.
+What-If Scenarios: See exactly what happens if you remove a link (+52%), add an image (+38%), post at peak time (+25%), or align with a trending topic (+15%). Click to apply.
 
-AI Slop Detection: Flags AI-sounding language patterns so your tweets stay authentic. Algorithms penalize robotic content — we help you avoid it.
+X-Ray Mode: Scores every tweet on your timeline as you scroll. Color-coded pills (red to purple) show reach potential at a glance. See what works and what doesn't.
 
-Reply Coach: Get notified about unanswered replies on your tweets. Replying to engaged followers gives a 150x algorithm distribution boost.
+AI Auto-Optimize: One click runs 5 rounds of iterative AI rewriting to find the highest-reach version of your tweet. Powered by Claude.
 
-Self-Reply Strategy: Generate a self-reply to kickstart conversations and boost engagement on your own tweet.
+AI Slop Detection: Flags AI-sounding language patterns (28 heuristic patterns + LLM verification). The algorithm penalizes robotic content.
 
-Trending Alignment: Automatically detects when your tweet aligns with currently trending topics for bonus reach.
+Reply Coach: Notifies you about unanswered replies on your tweets. Replying to engaged followers gives a 150x algorithm distribution boost.
 
-Posting Time Optimization: Know whether now is a good time to post based on your timezone and peak engagement windows.
+Self-Reply Strategy: Generate a conversation-starting self-reply. Author replies are worth 150x a like in the algorithm.
+
+Trending Alignment: Detects when your tweet matches currently trending topics for bonus reach points.
+
+Posting Time Optimizer: Shows optimal posting windows based on research-backed UTC peak engagement data.
+
+Self-Learning: The system tracks your predictions vs actual performance and auto-calibrates over time. The longer you use it, the more accurate it gets.
+
+BYOK (Bring Your Own Keys): Deploy your own API server or use the hosted instance. Configure in Settings. Fully open-source on GitHub.
 
 --- HOW IT WORKS ---
 
-1. Open X.com (Twitter) and start composing a tweet
-2. ReachOS instantly scores your content and shows suggestions
-3. Follow the suggestions or use AI auto-optimize for maximum reach
-4. Post with confidence knowing your reach potential
+1. Install ReachOS and open X.com
+2. Start composing a tweet - score appears instantly
+3. Check the Reach Forecast to see predicted impressions
+4. Use What-If Scenarios to optimize before posting
+5. Browse your timeline with X-Ray Mode to learn what works
 
 --- BACKED BY RESEARCH ---
 
-29 rules, 106 tests. Every scoring rule is derived from algorithm signal research — not guesswork. Rules cover hook strength, structure patterns, engagement triggers, penalty avoidance, and bonus signals.
+35 rules, 132 tests. Every rule is derived from the open-sourced X algorithm (twitter/the-algorithm), viral pattern analysis, and platform signal research. Not guesswork.
 
-Free tier: 3 AI-enhanced analyses per month. Local scoring is always unlimited and instant.
+Key signals: Reply = 27x a like. Bookmark = 20x. Media = 2x Earlybird boost. External links = -30 to -50% reach. 3+ hashtags = -40% engagement.
+
+Open source: github.com/AytuncYildizli/reach-optimizer
