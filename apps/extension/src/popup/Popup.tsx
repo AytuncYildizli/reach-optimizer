@@ -471,7 +471,7 @@ function SettingsTab() {
       </button>
 
       <div style={{ marginTop: 16, borderTop: '1px solid #eee', paddingTop: 12, fontSize: 10, color: '#999', lineHeight: 1.5 }}>
-        Without a server, ReachOS still scores your tweets locally using 35 rules. AI features (slop detection, auto-optimize, suggestions) require a server with an Anthropic API key.
+        Without a server, ReachOS still scores your tweets locally using 36 rules. AI features (slop detection, auto-optimize, suggestions) require a server with an Anthropic API key.
       </div>
     </div>
   );
@@ -607,7 +607,7 @@ export function Popup() {
               Active
             </div>
             <div style={{ fontSize: 11, color: '#00754d', lineHeight: 1.5 }}>
-              Open X.com and start typing a tweet. ReachOS scores your content in real-time using 35 algorithm-backed rules.
+              Open X.com and start typing a tweet. ReachOS scores your content in real-time using 36 algorithm-backed rules.
             </div>
           </div>
 
