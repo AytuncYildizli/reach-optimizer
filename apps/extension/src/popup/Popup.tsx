@@ -594,74 +594,94 @@ export function Popup() {
     );
   }
 
-  // Signed-out view
-  if (activeTab === 'settings') {
-    return (
-      <div style={{ width: 320 }}>
-        <div style={tabBarStyle}>
-          <button style={tabStyle(false)} onClick={() => setActiveTab('status')}>
-            Home
-          </button>
-          <button style={tabStyle(true)} onClick={() => setActiveTab('settings')}>
-            Settings
-          </button>
-        </div>
-        <SettingsTab />
-      </div>
-    );
-  }
-
+  // Default view (signed-out) — no sign-in wall, show value immediately
   return (
     <div style={{ width: 320 }}>
       <div style={tabBarStyle}>
-        <button style={tabStyle(true)} onClick={() => setActiveTab('status')}>
+        <button style={tabStyle(activeTab === 'status')} onClick={() => setActiveTab('status')}>
           Home
         </button>
-        <button style={tabStyle(false)} onClick={() => setActiveTab('settings')}>
+        <button style={tabStyle(activeTab === 'settings')} onClick={() => setActiveTab('settings')}>
           Settings
         </button>
       </div>
-      <div style={{ padding: 20 }}>
-        <h1 style={{ fontSize: 18, margin: '0 0 4px', fontWeight: 800 }}>ReachOS</h1>
-        <p style={{ fontSize: 12, color: '#666', margin: '0 0 16px' }}>
-          Open-source Content Reach Optimizer
-        </p>
-        <p style={{ fontSize: 12, color: '#333', margin: '0 0 16px', lineHeight: 1.5 }}>
-          Scores your tweets against 35 algorithm-research-backed rules. Sign in for AI features, or configure your own server in Settings.
-        </p>
+      {activeTab === 'settings' ? (
+        <SettingsTab />
+      ) : (
+        <div style={{ padding: 20 }}>
+          <h1 style={{ fontSize: 18, margin: '0 0 4px', fontWeight: 800 }}>ReachOS</h1>
+          <p style={{ fontSize: 12, color: '#666', margin: '0 0 8px' }}>
+            Open-source Reach Optimizer
+          </p>
 
-        {error && (
           <div style={{
-            background: '#fee',
-            border: '1px solid #fcc',
-            borderRadius: 8,
-            padding: 8,
-            fontSize: 11,
-            color: '#c00',
-            marginBottom: 12
+            background: '#e6f9f0',
+            border: '1px solid #00ba7c',
+            borderRadius: 10,
+            padding: 12,
+            marginBottom: 16,
           }}>
-            {error}
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#00754d', marginBottom: 4 }}>
+              Active
+            </div>
+            <div style={{ fontSize: 11, color: '#00754d', lineHeight: 1.5 }}>
+              Open X.com and start typing a tweet. ReachOS scores your content in real-time using 35 algorithm-backed rules.
+            </div>
           </div>
-        )}
 
-        <button onClick={handleSignIn} style={{
-          width: '100%',
-          padding: '10px 16px',
-          background: '#1d9bf0',
-          color: '#fff',
-          border: 'none',
-          borderRadius: 20,
-          fontSize: 14,
-          fontWeight: 600,
-          cursor: 'pointer',
-        }}>
-          Sign in with X
-        </button>
+          <div style={{
+            background: '#f5f5f5',
+            borderRadius: 10,
+            padding: 12,
+            marginBottom: 12,
+          }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#333', marginBottom: 6 }}>
+              What you get
+            </div>
+            <div style={{ fontSize: 11, color: '#555', lineHeight: 1.6 }}>
+              {'\u2705'} Real-time Reach Score (0-100)<br/>
+              {'\u2705'} Breakdown: Hook, Structure, Engagement<br/>
+              {'\u2705'} Reach Forecast with What-If Scenarios<br/>
+              {'\u2705'} X-Ray Mode (score every tweet on timeline)<br/>
+              {'\u2705'} AI Slop Detection
+            </div>
+          </div>
 
-        <p style={{ fontSize: 10, color: '#999', textAlign: 'center', marginTop: 12 }}>
-          Local scoring works without sign-in. AI features require a server.
-        </p>
-      </div>
+          <details style={{ marginBottom: 12 }}>
+            <summary style={{ fontSize: 12, color: '#1d9bf0', cursor: 'pointer', fontWeight: 600 }}>
+              Optional: Sign in for tracking + AI features
+            </summary>
+            <div style={{ padding: '10px 0 0' }}>
+              {error && (
+                <div style={{
+                  background: '#fee', border: '1px solid #fcc', borderRadius: 8,
+                  padding: 8, fontSize: 11, color: '#c00', marginBottom: 8
+                }}>
+                  {error}
+                </div>
+              )}
+              <button onClick={handleSignIn} style={{
+                width: '100%', padding: '8px 16px', background: '#1d9bf0', color: '#fff',
+                border: 'none', borderRadius: 16, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              }}>
+                Sign in with X
+              </button>
+              <p style={{ fontSize: 10, color: '#999', marginTop: 6, lineHeight: 1.4 }}>
+                Unlocks: tweet tracking, post-mortem metrics, personalized weight learning, auto-optimize.
+              </p>
+            </div>
+          </details>
+
+          <a
+            href="https://github.com/AytuncYildizli/reach-optimizer"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: 'block', textAlign: 'center', fontSize: 11, color: '#999', textDecoration: 'none' }}
+          >
+            Open source on GitHub {'\u2192'}
+          </a>
+        </div>
+      )}
     </div>
   );
 }
