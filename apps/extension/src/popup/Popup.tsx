@@ -629,31 +629,6 @@ export function Popup() {
             </div>
           </div>
 
-          <details style={{ marginBottom: 12 }}>
-            <summary style={{ fontSize: 12, color: '#1d9bf0', cursor: 'pointer', fontWeight: 600 }}>
-              Optional: Sign in for tracking + AI features
-            </summary>
-            <div style={{ padding: '10px 0 0' }}>
-              {error && (
-                <div style={{
-                  background: '#fee', border: '1px solid #fcc', borderRadius: 8,
-                  padding: 8, fontSize: 11, color: '#c00', marginBottom: 8
-                }}>
-                  {error}
-                </div>
-              )}
-              <button onClick={handleSignIn} style={{
-                width: '100%', padding: '8px 16px', background: '#1d9bf0', color: '#fff',
-                border: 'none', borderRadius: 16, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-              }}>
-                Sign in with X
-              </button>
-              <p style={{ fontSize: 10, color: '#999', marginTop: 6, lineHeight: 1.4 }}>
-                Unlocks: tweet tracking, post-mortem metrics, personalized weight learning, auto-optimize.
-              </p>
-            </div>
-          </details>
-
           <a
             href="https://github.com/AytuncYildizli/reach-optimizer"
             target="_blank"
