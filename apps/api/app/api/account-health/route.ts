@@ -38,7 +38,6 @@ export async function GET(req: NextRequest) {
         xAccessToken: true,
         xUserId: true,
         createdAt: true,
-        subscriptionTier: true,
       },
     });
 
@@ -65,7 +64,7 @@ export async function GET(req: NextRequest) {
     // Calculate account health
     const health = calculateAccountHealth(
       xProfile,
-      user.subscriptionTier !== 'free',
+      false, // X Premium status detected from profile.isVerified
       avgEngagement,
     );
 
