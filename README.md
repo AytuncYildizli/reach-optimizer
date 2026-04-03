@@ -333,6 +333,11 @@ pnpm typecheck
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for how to add rules, fix bugs, and submit PRs.
 
+## Further Reading
+
+- [I Read X's Open-Source Algorithm — Here's What Actually Matters in 2026](https://hackernoon.com/i-read-xs-open-source-algorithm-heres-what-actually-matters-in-2026) - Deep dive on the same algorithm signals ReachOS scores against
+- [twitter/the-algorithm](https://github.com/twitter/the-algorithm) - X's open-sourced recommendation algorithm (primary source for our rules)
+
 ## License
 
 MIT - see [LICENSE](LICENSE).
