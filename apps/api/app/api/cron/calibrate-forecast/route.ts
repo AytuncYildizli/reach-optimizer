@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@lib/db';
+import { verifyCronAuth } from '@lib/cron-auth';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -13,7 +14,9 @@ export const maxDuration = 60;
  *
  * Runs daily after fetch-metrics and learn-weights.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const denied = verifyCronAuth(request);
+  if (denied) return denied;
   try {
     console.log('[calibrate-forecast] Starting forecast calibration...');
 

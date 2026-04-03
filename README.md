@@ -14,7 +14,7 @@
 
 ---
 
-ReachOS is a Chrome extension that scores your tweets in real time against 35 algorithm-research-backed rules, predicts your reach, and shows you exactly how to improve it. BYOK (Bring Your Own Keys) - fully self-hostable.
+ReachOS is a Chrome extension that scores your tweets in real time against 36 algorithm-research-backed rules, predicts your reach, and shows you exactly how to improve it. BYOK (Bring Your Own Keys) - fully self-hostable.
 
 ```
 You type a tweet.
@@ -29,7 +29,7 @@ ReachOS says: "This will reach ~14,200 people.
 ### Score Overlay + Reach Forecast
 Real-time 0-100 score as you type in the X.com composer. Breakdown bars for Hook, Structure, Engagement, Penalties, and Bonuses. Reach Forecast predicts impressions with interactive what-if scenarios.
 
-![ReachOS Demo](docs/screenshots/reachos-demo.gif)
+![Score Overlay with Reach Forecast](docs/screenshots/overlay-score-forecast.png)
 
 ### X-Ray Mode
 Scores every tweet on your timeline as you scroll. Color-coded pills (red/orange/yellow/green/blue/purple) show reach potential at a glance.
@@ -62,7 +62,7 @@ Post tweet → Save prediction → Fetch real metrics (15min)
 
 ### Scoring Engine (35 Rules)
 
-Every tweet is scored against 35 rules derived from the open-sourced X algorithm and viral pattern research:
+Every tweet is scored against 36 rules derived from the open-sourced X algorithm and viral pattern research:
 
 | Category | Rules | What It Checks |
 |----------|-------|----------------|
@@ -118,20 +118,19 @@ cp .env.example apps/api/.env.local
 # Edit apps/api/.env.local with your keys
 ```
 
-**Minimum required keys:**
+**No server required for basic usage.** The extension scores tweets locally with 36 rules. No keys, no database, no setup. Just install and go.
 
-| Key | Where to get it | Required for |
-|-----|-----------------|-------------|
-| `DATABASE_URL` | [Neon](https://neon.tech) (free tier) or any PostgreSQL | Everything |
-| `JWT_SECRET` | `openssl rand -hex 32` | Auth |
-| `X_CLIENT_ID` | [X Developer Portal](https://developer.x.com) | OAuth login |
-| `X_CLIENT_SECRET` | X Developer Portal | OAuth login |
-| `ANTHROPIC_API_KEY` | [Anthropic Console](https://console.anthropic.com) | AI features (optional) |
-| `TWITTER_API_IO_KEY` | [twitterapi.io](https://twitterapi.io) | Trending + metrics (optional) |
+If you want to self-host the API for AI features:
 
-Without `ANTHROPIC_API_KEY`: local 35-rule scoring still works perfectly. No AI slop detection or auto-optimize.
-
-Without `TWITTER_API_IO_KEY`: no trending alignment or post-mortem metrics. Forecast still works using rule scores.
+| Key | Where to get it | Required? |
+|-----|-----------------|-----------|
+| `DATABASE_URL` | [Neon](https://neon.tech) (free tier) or any PostgreSQL | For tracking + dashboard |
+| `JWT_SECRET` | `openssl rand -hex 32` | For auth |
+| `ANTHROPIC_API_KEY` | [Anthropic Console](https://console.anthropic.com) | For AI analysis (optional) |
+| `X_CLIENT_ID` | [X Developer Portal](https://developer.x.com) | For "Connect X" login (optional) |
+| `X_CLIENT_SECRET` | X Developer Portal | For "Connect X" login (optional) |
+| `TWITTER_API_IO_KEY` | [twitterapi.io](https://twitterapi.io) | For trending + metrics (optional) |
+| `CRON_SECRET` | `openssl rand -hex 32` | Protects cron endpoints (recommended) |
 
 ### 3. Push database schema
 
@@ -208,7 +207,7 @@ The API includes 4 cron jobs (auto-configured on Vercel):
 │         │                 │                                  │
 │         ▼                 ▼                                  │
 │  ┌──────────────────────────────┐                           │
-│  │     Rules Engine (client)    │  35 rules, instant        │
+│  │     Rules Engine (client)    │  36 rules, instant        │
 │  │     @reach/rules-engine      │  scoring on every         │
 │  └──────────────┬───────────────┘  keystroke                │
 │                 │                                            │

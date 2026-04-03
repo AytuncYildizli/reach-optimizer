@@ -31,4 +31,7 @@ export const env = {
   get OPS_DATABASE_URL() {
     return process.env.OPS_DATABASE_URL ?? '';
   },
+  get CRON_SECRET() {
+    return process.env.CRON_SECRET ?? '';
+  },
 };
