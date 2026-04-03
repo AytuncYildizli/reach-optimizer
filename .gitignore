@@ -36,3 +36,4 @@ Thumbs.db
 .tmp-*
 *.tmp
 .vercel
+.vercel-build

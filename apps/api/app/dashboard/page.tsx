@@ -124,7 +124,7 @@ export default async function DashboardPage() {
               fontWeight: 700,
               margin: '0 0 12px 0',
             }}>
-              Sign in to ReachOS
+              ReachOS Dashboard
             </h2>
             <p style={{
               color: colors.textSecondary,
@@ -132,8 +132,8 @@ export default async function DashboardPage() {
               lineHeight: 1.6,
               margin: '0 0 24px 0',
             }}>
-              Log in with your X account to view your tweet analytics, reach scores,
-              and personalized optimization insights.
+              Connect your X account to track tweet performance, view reach analytics,
+              and see how your predictions compare to real outcomes.
             </p>
             <a
               href="/api/auth/login"
@@ -148,13 +148,13 @@ export default async function DashboardPage() {
                 textDecoration: 'none',
               }}
             >
-              Sign in with X
+              Connect X Account
             </a>
           </div>
         </main>
         <footer style={styles.footer}>
           <span style={{ color: colors.textSecondary, fontSize: 13 }}>
-            ReachOS - Tweet Reach Optimization Platform
+            ReachOS - Open-source Reach Optimizer
           </span>
         </footer>
       </div>

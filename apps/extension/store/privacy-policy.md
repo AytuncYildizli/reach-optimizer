@@ -1,64 +1,56 @@
 # ReachOS Privacy Policy
 
-**Last updated: March 22, 2026**
+**Last updated: April 3, 2026**
 
 ## What ReachOS Does
 
-ReachOS is a browser extension that analyzes tweet text you type on X.com (Twitter) and provides a Reach Score with optimization suggestions. It works primarily on your device with optional server-side AI enhancement.
+ReachOS is an open-source browser extension that analyzes tweet text you type on X.com and provides a Reach Score with optimization suggestions. It works primarily on your device. Server-side AI features are optional and use your own configured server (BYOK).
 
 ## What We Collect
 
 ### Data processed locally (never leaves your device)
 - Tweet text you type in the X.com composer (analyzed in real time, not stored)
-- Your browser language preference (for i18n locale detection)
+- Your browser language preference (for locale detection)
+- Extension settings (API server URL, stored in chrome.storage)
 
-### Data sent to our server (only when AI features are used)
-- Tweet text content (sent to our API for AI-enhanced scoring and rewrite suggestions)
-- Anonymous usage metrics (analysis count, feature usage — no personal identifiers)
-- Authentication token (if you sign in for premium features)
+### Data sent to your configured server (only when AI features are used)
+- Tweet text content (sent to your API server for AI-enhanced scoring)
+- If you sign in: X.com profile info (username, display name, profile image) for account health features
 
 ### Data we do NOT collect
-- Your X.com (Twitter) username or profile information
+- We do not operate a centralized data collection service
 - Your tweets after they are posted
 - Your browsing history outside of X.com
 - Your direct messages, followers list, or any other X.com data
 - Cookies or tracking identifiers for advertising
 
-## How We Use Your Data
+## Self-Hosted Architecture
 
-- Tweet text sent to our server is processed in real time and not permanently stored
-- We use Anthropic Claude API for AI-enhanced analysis; text is sent to their API under their data processing terms
-- Anonymous, aggregated usage statistics may be used to improve the product
+ReachOS is fully open source (MIT license). You can:
+- Use it with local scoring only (no server needed, 35 rules run on your device)
+- Deploy your own API server and point the extension to it
+- Inspect all source code at github.com/AytuncYildizli/reach-optimizer
 
 ## Data Sharing
 
-- We do NOT sell your data to anyone
+- We do NOT sell your data
 - We do NOT share your data with advertisers
-- Tweet text is sent to Anthropic Claude API solely for analysis; Anthropic's API data retention policy applies
-- We may share aggregated, anonymous statistics (e.g., "X analyses performed this month")
-
-## Data Storage
-
-- No tweet content is permanently stored on our servers
-- If you create an account, we store your email and authentication credentials securely
-- Usage counters (number of analyses used) are stored to enforce free tier limits
+- If you use AI features, tweet text is sent to your configured API server, which may use Anthropic Claude API for analysis
+- No centralized analytics or telemetry
 
 ## Your Rights
 
-- You can use ReachOS without creating an account (local scoring works without server)
+- You can use ReachOS without any account or server (local scoring is fully functional)
 - You can uninstall the extension at any time to stop all data processing
-- You can request deletion of any account data by contacting us
+- All data is under your control — self-host for full ownership
 
 ## Security
 
 - All data transmission uses HTTPS encryption
-- Server API endpoints use authentication and rate limiting
-- We follow security best practices for data handling
-
-## Changes to This Policy
-
-We may update this privacy policy from time to time. Changes will be reflected in the "Last updated" date above.
+- Source code is publicly auditable
+- No hardcoded API keys or tracking in the extension
 
 ## Contact
 
-For privacy questions or data deletion requests, open an issue on our GitHub repository or contact the development team.
+For privacy questions, open an issue on our GitHub repository:
+github.com/AytuncYildizli/reach-optimizer

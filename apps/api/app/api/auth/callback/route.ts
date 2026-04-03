@@ -4,12 +4,8 @@ import { prisma } from '@lib/db';
 import { createToken } from '@lib/auth';
 import type { AuthCallbackResponse, ErrorResponse } from '@reach/shared-types';
 
-const USAGE_LIMITS: Record<string, number> = {
-  free: 25,
-  starter: 100,
-  pro: 500,
-  team: 2000,
-};
+// Open source — no tier limits. Track usage for analytics only.
+const USAGE_LIMIT = 999999;
 
 /**
  * Exchange auth code for token, fetch user, upsert DB, return JWT.
@@ -89,7 +85,7 @@ async function handleOAuthCallback(
       xProfileImage: user.xProfileImage ?? '',
       subscriptionTier: user.subscriptionTier,
       monthlyUsageCount: user.monthlyUsageCount,
-      monthlyUsageLimit: USAGE_LIMITS[user.subscriptionTier] ?? 25,
+      monthlyUsageLimit: USAGE_LIMIT,
     },
   };
 }
