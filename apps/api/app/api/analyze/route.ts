@@ -118,10 +118,6 @@ export async function POST(request: NextRequest) {
   if (userId) {
     try {
       await prisma.$transaction([
-        prisma.user.update({
-          where: { id: userId },
-          data: { monthlyUsageCount: { increment: 1 } },
-        }),
         prisma.analysis.create({
           data: {
             userId,

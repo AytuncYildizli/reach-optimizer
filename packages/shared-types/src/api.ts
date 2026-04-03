@@ -13,7 +13,7 @@ export interface AnalyzeResponse {
 export interface ErrorResponse {
   success: false;
   error: string;
-  code: 'UNAUTHORIZED' | 'RATE_LIMITED' | 'USAGE_EXCEEDED' | 'VALIDATION_ERROR' | 'INTERNAL_ERROR';
+  code: 'UNAUTHORIZED' | 'RATE_LIMITED' | 'VALIDATION_ERROR' | 'INTERNAL_ERROR';
 }
 
 export interface AuthCallbackRequest {
@@ -29,9 +29,6 @@ export interface AuthCallbackResponse {
     xUsername: string;
     xDisplayName: string;
     xProfileImage: string;
-    subscriptionTier: string;
-    monthlyUsageCount: number;
-    monthlyUsageLimit: number;
   };
 }
 

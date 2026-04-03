@@ -6,9 +6,6 @@ interface UserInfo {
   xUsername: string;
   xDisplayName: string;
   xProfileImage: string;
-  subscriptionTier: string;
-  monthlyUsageCount: number;
-  monthlyUsageLimit: number;
 }
 
 interface TrackedTweet {
@@ -339,14 +336,10 @@ function StatusTab({ user, onSignOut }: { user: UserInfo; onSignOut: () => void 
 
       <AccountHealthCard />
 
-      <div style={{ background: '#f5f5f5', borderRadius: 10, padding: 12, marginBottom: 12 }}>
-        <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>AI Analyses Used</div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <span style={{ fontSize: 24, fontWeight: 800 }}>{user.monthlyUsageCount}</span>
-          <span style={{ fontSize: 12, color: '#666' }}>this month</span>
-        </div>
-        <div style={{ fontSize: 10, color: '#999', marginTop: 4 }}>
-          Local scoring is always unlimited. AI features use your configured server.
+      <div style={{ background: '#e6f9f0', borderRadius: 10, padding: 12, marginBottom: 12, border: '1px solid #00ba7c' }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#00754d', marginBottom: 4 }}>Active</div>
+        <div style={{ fontSize: 11, color: '#00754d', lineHeight: 1.5 }}>
+          36 rules scoring locally. AI features connected via your server.
         </div>
       </div>
 
