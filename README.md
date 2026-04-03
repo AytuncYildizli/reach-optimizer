@@ -209,7 +209,7 @@ The API includes 4 cron jobs (auto-configured on Vercel):
 │  ┌──────────────────────────────┐                           │
 │  │     Rules Engine (client)    │  36 rules, instant        │
 │  │     @reach/rules-engine      │  scoring on every         │
-│  └──────────────┬───────────────┘  keystroke                │
+│  └──────────────┬───────────────┘  as you type              │
 │                 │                                            │
 │                 ▼  (after 2s idle)                           │
 │  ┌──────────────────────────────┐                           │
