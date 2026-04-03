@@ -1,6 +1,6 @@
 ReachOS - Know your reach before you post.
 
-Open-source Chrome extension that scores your tweets in real time against 35 algorithm-research-backed rules, predicts your reach, and shows you exactly how to improve it. BYOK (Bring Your Own Keys) - fully self-hostable.
+Open-source Chrome extension that scores your tweets in real time against 36 algorithm-research-backed rules, predicts your reach, and shows you exactly how to improve it. BYOK (Bring Your Own Keys) - fully self-hostable.
 
 --- FEATURES ---
 

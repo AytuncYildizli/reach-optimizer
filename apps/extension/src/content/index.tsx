@@ -78,11 +78,11 @@ function mergeServerResult(
  */
 function requestServerAnalysis(text: string): void {
   // Check if we have an auth token before making server requests
-  // If not logged in, silently skip — server analysis is a premium feature
+  // If not logged in, silently skip — server analysis requires auth
   try {
     chrome.storage.local.get('authToken', (result) => {
       if (chrome.runtime.lastError || !result.authToken) {
-        // No token — skip server analysis silently (not an error)
+        // No token — skip server analysis (requires auth)
         return;
       }
       doServerRequest(text);
