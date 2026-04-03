@@ -1,15 +1,15 @@
 import type { RuleSeverity, TextHighlight } from './rules';
 
 export interface ScoreBreakdown {
-  /** 0 to 25 */
+  /** 0 to 30 */
   hook: number;
   /** 0 to 20 */
   structure: number;
-  /** 0 to 20 */
+  /** 0 to 30 */
   engagement: number;
-  /** 0 to -30 */
+  /** -55 to 0 */
   penalties: number;
-  /** 0 to +15 */
+  /** 0 to 15 */
   bonuses: number;
 }
 

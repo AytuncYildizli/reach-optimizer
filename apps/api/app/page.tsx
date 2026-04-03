@@ -1,6 +1,6 @@
 export const metadata = {
   title: 'ReachOS — Grammarly for Reach',
-  description: 'Real-time Reach Score for your tweets. 29 algorithm-optimized rules, AI rewrites, reply coaching.',
+  description: 'Real-time Reach Score for your tweets. 36 algorithm-optimized rules, AI rewrites, reply coaching.',
 };
 
 export default function LandingPage() {
@@ -90,7 +90,7 @@ export default function LandingPage() {
           }}
         >
           Real-time scoring for every tweet you write. Know your reach potential
-          before you hit post. Powered by 29 algorithm-research-backed rules.
+          before you hit post. Powered by 36 algorithm-research-backed rules.
         </p>
         <div style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
           <a
@@ -311,8 +311,8 @@ export default function LandingPage() {
           }}
         >
           {[
-            { value: '29', label: 'Algorithm Rules' },
-            { value: '106', label: 'Test Cases' },
+            { value: '36', label: 'Algorithm Rules' },
+            { value: '132', label: 'Test Cases' },
             { value: '5', label: 'AI Optimization Rounds' },
             { value: '0-100', label: 'Reach Score Range' },
           ].map((stat) => (
@@ -377,7 +377,7 @@ export default function LandingPage() {
             marginBottom: 32,
           }}
         >
-          3 free analyses per month. No credit card required.
+          Free and open source. Install from Chrome Web Store.
         </p>
         <a
           href="https://chromewebstore.google.com/detail/reachos-content-reach-opt/ligaanjkjpgaieabfmbeecehhhfoiecf"
@@ -410,7 +410,7 @@ export default function LandingPage() {
           margin: '0 auto',
         }}
       >
-        ReachOS v1.0 &mdash; Built for creators who want maximum reach.
+        ReachOS &mdash; Open-source reach optimizer for X.
       </footer>
     </div>
   );
