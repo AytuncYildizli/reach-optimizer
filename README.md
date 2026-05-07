@@ -60,7 +60,7 @@ Post tweet → Save prediction → Fetch real metrics (15min)
 
 ## How It Works
 
-### Scoring Engine (35 Rules)
+### Scoring Engine (36 Rules)
 
 Every tweet is scored against 36 rules derived from the open-sourced X algorithm and viral pattern research:
 
