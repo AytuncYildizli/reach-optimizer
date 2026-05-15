@@ -30,6 +30,9 @@ interface Message {
   model?: string;
   maxTokens?: number;
   temperature?: number;
+  /** Override the stored Anthropic key (used by Settings "Test Key" so users
+   * can validate a newly-typed key before saving it). */
+  apiKeyOverride?: string;
 }
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -113,7 +116,9 @@ chrome.runtime.onMessage.addListener(
  * No server needed — runs entirely in the extension.
  */
 async function handleDirectAnthropic(message: Message): Promise<unknown> {
-  const apiKey = await getAnthropicKey();
+  // Prefer the explicit override (Settings "Test Key" passes the typed key
+  // here so users can validate before saving). Fall back to stored key.
+  const apiKey = message.apiKeyOverride?.trim() || (await getAnthropicKey());
   if (!apiKey) {
     return { ok: false, error: "No Anthropic API key configured. Add your key in Settings." };
   }

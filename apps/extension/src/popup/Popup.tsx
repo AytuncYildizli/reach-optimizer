@@ -409,12 +409,17 @@ function SettingsTab() {
 
   const handleTestKey = () => {
     setKeyTestResult(null);
+    // Pass the currently-typed key explicitly so users can validate a new
+    // key before saving. Without this, the service worker would read the
+    // previously-saved key from chrome.storage and show "Invalid key" on
+    // first-time setup until the user clicked Save first.
     chrome.runtime.sendMessage(
       {
         type: 'DIRECT_ANTHROPIC',
         systemPrompt: 'Reply with exactly: ok',
         userPrompt: 'ping',
         maxTokens: 8,
+        apiKeyOverride: anthropicKey.trim() || undefined,
       },
       (response) => {
         setKeyTestResult(response?.ok ? 'ok' : 'fail');

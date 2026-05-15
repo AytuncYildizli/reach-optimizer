@@ -326,11 +326,13 @@ function onComposerTextChange(_composerEl: HTMLElement, text: string): void {
     return;
   }
 
-  // 1. Detect media — searches multiple scopes for robustness
-  const hasMedia = (() => {
+  // 1. Detect media kind — searches multiple scopes for robustness. Returns
+  //    { hasMedia, mediaType } so v4's vqv signal can fire when a video is
+  //    attached (was previously hard-coded as image, masking the vqv signal).
+  const media: { hasMedia: boolean; mediaType: TweetInput['mediaType'] } = (() => {
     try {
       const composer = document.querySelector('[data-testid="tweetTextarea_0"]');
-      if (!composer) return false;
+      if (!composer) return { hasMedia: false, mediaType: undefined };
 
       // Build a list of containers to check, from narrow to wide
       const containers: Element[] = [];
@@ -354,75 +356,79 @@ function onComposerTextChange(_composerEl: HTMLElement, text: string): void {
       if (containers.length === 0) containers.push(document.body);
 
       for (const container of containers) {
-        // Strategy 1: data-testid media attributes
-        if (
-          container.querySelector('[data-testid="attachments"]') ||
-          container.querySelector('[data-testid="tweetPhoto"]') ||
-          container.querySelector('[data-testid="videoComponent"]') ||
-          container.querySelector('[data-testid="tweetMediaImage"]') ||
-          container.querySelector('[data-testid="gifPreview"]') ||
-          container.querySelector('[data-testid="removeMedia"]')
-        ) return true;
+        // Video gets checked first — videoComponent and <video> are the most
+        // discriminating signals, and falling back to image only on miss.
+        if (container.querySelector('[data-testid="videoComponent"]')) {
+          return { hasMedia: true, mediaType: 'video' };
+        }
+        for (const v of container.querySelectorAll('video')) {
+          if (!v.closest('article[data-testid="tweet"]')) {
+            return { hasMedia: true, mediaType: 'video' };
+          }
+        }
 
-        // Strategy 2: aria-label patterns
+        if (container.querySelector('[data-testid="gifPreview"]')) {
+          return { hasMedia: true, mediaType: 'gif' };
+        }
+
+        // Image-shaped detections.
+        if (
+          container.querySelector('[data-testid="tweetPhoto"]') ||
+          container.querySelector('[data-testid="tweetMediaImage"]') ||
+          container.querySelector('[data-testid="attachments"]') ||
+          container.querySelector('[data-testid="removeMedia"]')
+        ) {
+          return { hasMedia: true, mediaType: 'image' };
+        }
+
+        // aria-label patterns — kind unknown, default to image.
         if (
           container.querySelector('[aria-label*="Remove"]') ||
           container.querySelector('[aria-label*="Edit media"]') ||
           container.querySelector('[aria-label*="Medyay"]')
-        ) return true;
+        ) return { hasMedia: true, mediaType: 'image' };
 
-        // Strategy 3: "Edit"/"Alt"/"Tag people"/"Add a description" buttons/text
-        // "Add a description" ONLY appears when media is attached
+        // Compose-affordance text — kind unknown.
         const allText = container.textContent || '';
         if (
           allText.includes('Add a description') ||
           allText.includes('Aciklama ekle') ||
           allText.includes('Tag people') ||
           allText.includes('Kisi etiketle')
-        ) return true;
+        ) return { hasMedia: true, mediaType: 'image' };
 
-        // Strategy 4: Edit/Alt buttons near media (not in timeline tweets)
-        const buttons = container.querySelectorAll('button');
-        for (const btn of buttons) {
+        // Edit / Alt buttons near media.
+        for (const btn of container.querySelectorAll('button')) {
           const txt = btn.textContent?.trim();
           if (txt === 'Edit' || txt === 'Alt' || txt === 'Düzenle' || txt === 'Kaldır') {
-            // Make sure this Edit button is in the compose area, not a tweet
-            const isInTweet = btn.closest('article[data-testid="tweet"]');
-            if (!isInTweet) return true;
-          }
-        }
-
-        // Strategy 5: Large images (not avatars/emoji/profile pics)
-        const imgs = container.querySelectorAll('img');
-        for (const img of imgs) {
-          const rect = img.getBoundingClientRect();
-          if (rect.width > 100 && rect.height > 80) {
-            const src = img.getAttribute('src') || '';
-            if (!src.includes('emoji') && !src.includes('profile_images') && !src.includes('pbs.twimg.com/profile')) {
-              // Exclude images inside timeline tweets
-              const isInTweet = img.closest('article[data-testid="tweet"]');
-              if (!isInTweet) return true;
+            if (!btn.closest('article[data-testid="tweet"]')) {
+              return { hasMedia: true, mediaType: 'image' };
             }
           }
         }
 
-        // Strategy 6: Video elements (not in timeline)
-        const videos = container.querySelectorAll('video');
-        for (const v of videos) {
-          if (!v.closest('article[data-testid="tweet"]')) return true;
+        // Large images (not avatars/emoji/profile pics).
+        for (const img of container.querySelectorAll('img')) {
+          const rect = img.getBoundingClientRect();
+          if (rect.width > 100 && rect.height > 80) {
+            const src = img.getAttribute('src') || '';
+            if (!src.includes('emoji') && !src.includes('profile_images') && !src.includes('pbs.twimg.com/profile')) {
+              if (!img.closest('article[data-testid="tweet"]')) {
+                return { hasMedia: true, mediaType: 'image' };
+              }
+            }
+          }
         }
-
-        // If we found media in any container, we already returned true.
-        // Only try wider containers if narrower ones didn't find media.
       }
 
-      return false;
-    } catch { return false; }
+      return { hasMedia: false, mediaType: undefined };
+    } catch { return { hasMedia: false, mediaType: undefined }; }
   })();
+  const hasMedia = media.hasMedia;
 
   // Log media detection for debugging
   if (hasMedia) {
-    console.log("[ReachOS] Media detected in composer");
+    console.log("[ReachOS] Media detected in composer", media.mediaType);
   }
 
   // 2. Run client rules immediately
@@ -431,6 +437,7 @@ function onComposerTextChange(_composerEl: HTMLElement, text: string): void {
     platform: "x",
     isThread: false,
     hasMedia,
+    mediaType: media.mediaType,
   };
 
   const result = engine.evaluate(input);
@@ -440,7 +447,7 @@ function onComposerTextChange(_composerEl: HTMLElement, text: string): void {
   latestText = text;
   latestScore = result.score;
   latestHasMedia = hasMedia;
-  latestMediaType = hasMedia ? 'image' : undefined; // media kind not differentiated at composer-detect time yet
+  latestMediaType = media.mediaType;
 
   // Detect external links for forecast
   const hasExternalLink = /https?:\/\/(?!(?:x\.com|twitter\.com|t\.co|pic\.twitter\.com))/i.test(text);
