@@ -24,6 +24,7 @@ let setGlobalServerPending: ((p: boolean) => void) | null = null;
 let setGlobalServerError: ((e: boolean) => void) | null = null;
 let setGlobalCurrentText: ((t: string) => void) | null = null;
 let setGlobalHasMedia: ((m: boolean) => void) | null = null;
+let setGlobalMediaType: ((t: 'image' | 'video' | 'gif' | 'poll' | undefined) => void) | null = null;
 let setGlobalHasExternalLink: ((l: boolean) => void) | null = null;
 
 // ---------------------------------------------------------------------------
@@ -258,6 +259,7 @@ function ScorePanel() {
   const [serverError, setServerError] = useState(false);
   const [currentText, setCurrentText] = useState("");
   const [hasMedia, setHasMedia] = useState(false);
+  const [mediaType, setMediaType] = useState<'image' | 'video' | 'gif' | 'poll' | undefined>(undefined);
   const [hasExternalLink, setHasExternalLink] = useState(false);
 
   useEffect(() => {
@@ -266,6 +268,7 @@ function ScorePanel() {
     setGlobalServerError = setServerError;
     setGlobalCurrentText = setCurrentText;
     setGlobalHasMedia = setHasMedia;
+    setGlobalMediaType = setMediaType;
     setGlobalHasExternalLink = setHasExternalLink;
     return () => {
       setGlobalAnalysis = null;
@@ -273,6 +276,7 @@ function ScorePanel() {
       setGlobalServerError = null;
       setGlobalCurrentText = null;
       setGlobalHasMedia = null;
+      setGlobalMediaType = null;
       setGlobalHasExternalLink = null;
     };
   }, []);
@@ -284,6 +288,7 @@ function ScorePanel() {
       serverError={serverError}
       currentText={currentText}
       hasMedia={hasMedia}
+      mediaType={mediaType}
       hasExternalLink={hasExternalLink}
     />
   );
@@ -460,6 +465,9 @@ function onComposerTextChange(_composerEl: HTMLElement, text: string): void {
   }
   if (setGlobalHasMedia) {
     setGlobalHasMedia(hasMedia);
+  }
+  if (setGlobalMediaType) {
+    setGlobalMediaType(media.mediaType);
   }
   if (setGlobalHasExternalLink) {
     setGlobalHasExternalLink(hasExternalLink);

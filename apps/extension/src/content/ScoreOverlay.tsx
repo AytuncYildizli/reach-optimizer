@@ -11,7 +11,7 @@ const localEngine = new ScoreEngine();
 // AutoOptimizeSection — score-aware optimization with client-side scoring
 // Uses user's own Anthropic key (BYOK) or falls back to server.
 // ---------------------------------------------------------------------------
-function AutoOptimizeSection({ text, originalScore, hasMedia }: { text: string; originalScore: number; hasMedia?: boolean }) {
+function AutoOptimizeSection({ text, originalScore, hasMedia, mediaType }: { text: string; originalScore: number; hasMedia?: boolean; mediaType?: 'image' | 'video' | 'gif' | 'poll' }) {
   const [results, setResults] = useState<{ text: string; score: number }[]>([]);
   const [loading, setLoading] = useState(false);
   const [noKeyError, setNoKeyError] = useState(false);
@@ -30,7 +30,7 @@ function AutoOptimizeSection({ text, originalScore, hasMedia }: { text: string; 
     setAlreadyGood(false);
 
     // 1. Score original with correct context
-    const originalResult = localEngine.evaluate({ text, platform: 'x', isThread: false, hasMedia: !!hasMedia });
+    const originalResult = localEngine.evaluate({ text, platform: 'x', isThread: false, hasMedia: !!hasMedia, mediaType });
     const origScore = originalResult.score;
     setLocalBaseline(origScore);
 
@@ -104,11 +104,11 @@ Return JSON: {"suggestions": ["v1", "v2", "v3"]}`;
                   content: text,
                   maxRounds: 2,
                   // Pass media context so the server scores original + variations
-                  // with the same hasMedia state the client used. Without this,
-                  // a media-attached tweet's server origScore is text-only and
-                  // valid improvements get filtered out as "already strong".
+                  // with the same hasMedia/mediaType state the client used.
+                  // Without this, a video-attached tweet's variants are scored
+                  // as text-only (or image-only) and miss the vqv signal.
                   hasMedia: !!hasMedia,
-                  mediaType: hasMedia ? 'image' : undefined,
+                  mediaType: hasMedia ? (mediaType ?? 'image') : undefined,
                 } },
               (serverResponse) => {
                 setLoading(false);
@@ -148,7 +148,7 @@ Return JSON: {"suggestions": ["v1", "v2", "v3"]}`;
         // Score each variation CLIENT-SIDE with correct hasMedia context
         const scored = suggestions.map(s => ({
           text: s,
-          score: localEngine.evaluate({ text: s, platform: 'x', isThread: false, hasMedia: !!hasMedia }).score,
+          score: localEngine.evaluate({ text: s, platform: 'x', isThread: false, hasMedia: !!hasMedia, mediaType }).score,
         }));
 
         // ONLY show results that score HIGHER than original
@@ -961,10 +961,11 @@ interface ScoreOverlayProps {
   serverError: boolean;
   currentText?: string;
   hasMedia?: boolean;
+  mediaType?: 'image' | 'video' | 'gif' | 'poll';
   hasExternalLink?: boolean;
 }
 
-export function ScoreOverlay({ analysis, isServerPending, serverError, currentText, hasMedia = false, hasExternalLink = false }: ScoreOverlayProps) {
+export function ScoreOverlay({ analysis, isServerPending, serverError, currentText, hasMedia = false, mediaType, hasExternalLink = false }: ScoreOverlayProps) {
   const [minimized, setMinimized] = useState(false);
   const [hidden, setHidden] = useState(false);
 
@@ -1035,7 +1036,7 @@ export function ScoreOverlay({ analysis, isServerPending, serverError, currentTe
             <SuggestionList suggestions={analysis.suggestions} />
             <ReplyCoachBanner />
             {currentText && (
-              <AutoOptimizeSection text={currentText} originalScore={analysis.score} hasMedia={hasMedia} />
+              <AutoOptimizeSection text={currentText} originalScore={analysis.score} hasMedia={hasMedia} mediaType={mediaType} />
             )}
             {currentText && (
               <SelfReplyGenerator text={currentText} />
