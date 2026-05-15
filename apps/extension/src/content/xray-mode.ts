@@ -8,6 +8,17 @@ import type { TweetInput } from "@reach/shared-types";
 
 const engine = new ScoreEngine();
 
+// Mirrors weights.json bands. Inlined here (and in index.tsx + analyze route)
+// so the timeline pill doesn't need to import the full rules-engine just to
+// pick a tier color for a locked score. v4.1 candidate: move to a shared util.
+function tierForScore(score: number): string {
+  if (score >= 80) return 'perfect';
+  if (score >= 61) return 'excellent';
+  if (score >= 41) return 'good';
+  if (score >= 21) return 'below_average';
+  return 'critical';
+}
+
 // Track which tweet elements we've already injected pills into
 const scoredTweets = new WeakSet<HTMLElement>();
 
@@ -167,7 +178,11 @@ function scoreTweet(tweetEl: HTMLElement): void {
   let tier: string;
   if (locked !== undefined) {
     score = locked;
-    tier = engine.evaluate({ text, platform: 'x', isThread: false, hasMedia: false }).tier;
+    // Derive tier from the locked score, NOT from a fresh text-only evaluate.
+    // The locked score includes the overlay's server/BYOK deltas; a text-only
+    // engine.evaluate() would lose that and could land in a different tier
+    // band (e.g. show "good" color for a server-boosted 66).
+    tier = tierForScore(locked);
   } else {
     const hasMedia = tweetHasMedia(tweetEl);
     const cacheKey = text + (hasMedia ? '|M' : '|T');

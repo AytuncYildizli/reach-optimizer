@@ -436,6 +436,41 @@ function onComposerTextChange(_composerEl: HTMLElement, text: string): void {
     console.log("[ReachOS] Media detected in composer", media.mediaType);
   }
 
+  // 1b. Detect quote-tweet attachment so v4's quoted_click and quoted_vqv
+  //     signals can apply. The composer wraps quoted posts in a card with
+  //     data-testid="card.wrapper" — pull the text and probe for a video
+  //     inside the card to set quotedMediaType.
+  const quote: {
+    isQuoteTweet: boolean;
+    quotedText: string;
+    quotedMediaType: TweetInput['quotedMediaType'];
+  } = (() => {
+    try {
+      const composer = document.querySelector('[data-testid="tweetTextarea_0"]');
+      if (!composer) return { isQuoteTweet: false, quotedText: '', quotedMediaType: undefined };
+      const scope = composer.closest('[role="dialog"]') ?? composer.closest('form') ?? document.body;
+      const card =
+        scope.querySelector('[data-testid="card.wrapper"]') ??
+        scope.querySelector('[aria-label="Embedded Tweet"]') ??
+        scope.querySelector('[data-testid="quoteTweet"]');
+      if (!card) return { isQuoteTweet: false, quotedText: '', quotedMediaType: undefined };
+      const quotedText = (card.textContent ?? '').slice(0, 280).trim();
+      const hasVideo = !!card.querySelector('video, [data-testid="videoComponent"]');
+      const hasImage = !!card.querySelector('img[src*="pbs.twimg.com/media"], [data-testid="tweetPhoto"]');
+      const quotedMediaType: TweetInput['quotedMediaType'] = hasVideo
+        ? 'video'
+        : hasImage
+          ? 'image'
+          : undefined;
+      return { isQuoteTweet: true, quotedText, quotedMediaType };
+    } catch {
+      return { isQuoteTweet: false, quotedText: '', quotedMediaType: undefined };
+    }
+  })();
+  if (quote.isQuoteTweet) {
+    console.log("[ReachOS] Quote-tweet detected, quotedMediaType=", quote.quotedMediaType);
+  }
+
   // 2. Run client rules immediately
   const input: TweetInput = {
     text,
@@ -443,6 +478,9 @@ function onComposerTextChange(_composerEl: HTMLElement, text: string): void {
     isThread: false,
     hasMedia,
     mediaType: media.mediaType,
+    isQuoteTweet: quote.isQuoteTweet,
+    quotedText: quote.quotedText,
+    quotedMediaType: quote.quotedMediaType,
   };
 
   const result = engine.evaluate(input);
