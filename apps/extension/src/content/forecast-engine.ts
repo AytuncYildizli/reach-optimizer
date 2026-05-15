@@ -291,6 +291,9 @@ function buildScenarios(
   if (unapplied.length >= 2) {
     const bestCase = recompute(input, {
       hasMedia: true,
+      // Pick the best-of-class media kind for the combined forecast so it
+      // doesn't undercount vs the standalone video scenario.
+      mediaKind: 'video',
       timingStatus: 'good_now',
       trending: true,
       // Combined = apply every suggested improvement, so force the gap on.
@@ -322,6 +325,10 @@ function recompute(
   overrides: {
     hasExternalLink?: boolean;
     hasMedia?: boolean;
+    /** When the caller wants to model adding a specific media type (e.g. the
+     * combined scenario picks the best-of-class video over image), force the
+     * kind here. Defaults to image-shaped boost like the rest of the engine. */
+    mediaKind?: 'image' | 'video';
     timingStatus?: 'good_now' | 'better_later' | 'off_peak';
     trending?: boolean;
     /** Force the curiosity-gap multiplier on/off regardless of whether the
@@ -337,6 +344,7 @@ function recompute(
   const hasExternalLink = overrides.hasExternalLink ?? input.hasExternalLink;
   const timingStatus = overrides.timingStatus ?? input.timingStatus;
   const isTrending = overrides.trending ?? (analysis.trendingAlignment?.isAligned ?? false);
+  const mediaKind = overrides.mediaKind ?? 'image';
 
   // Base reach
   let baseReach: number;
@@ -355,7 +363,12 @@ function recompute(
       ? GOOD_TIME_MULTIPLIER
       : OFF_PEAK_MULTIPLIER;
   const trendMultiplier = isTrending ? TRENDING_MULTIPLIER : 1.0;
-  const mediaMultiplier = hasMedia ? IMAGE_MULTIPLIER : 1.0;
+  // Media multiplier respects the requested kind — combined-best-case picks
+  // video for the bigger lift, while the standalone add-image scenario
+  // stays image-shaped.
+  const mediaMultiplier = hasMedia
+    ? (mediaKind === 'video' ? VIDEO_MULTIPLIER : IMAGE_MULTIPLIER)
+    : 1.0;
   // Same gap-gated logic as computeForecast, with an explicit override so
   // the "Combined optimizations" scenario can force the gap on without
   // having to mutate signalScores.
