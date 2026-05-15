@@ -79,9 +79,13 @@ export function computeForecast(input: ForecastInput): ReachForecast {
   // 5. Media multiplier (split image/video — separate signals in v4)
   const mediaMultiplier = hasMedia ? IMAGE_MULTIPLIER : 1.0;
 
-  // 6. Link multiplier — links are NO LONGER penalized in v4 (X click signal is positive).
-  //    A descriptive link with a curiosity gap actively boosts reach.
-  const linkMultiplier = hasExternalLink ? CLICK_GAP_MULTIPLIER : 1.0;
+  // 6. Link multiplier — only applied when the user actually has a curiosity
+  //    gap framing the link. A bare link without the gap shouldn't get the
+  //    boost (and shouldn't get a penalty either — that's the v4 inversion).
+  //    Otherwise the "Add a curiosity gap" what-if scenario would compound
+  //    the same multiplier twice over.
+  const hasCuriosityGap = analysis.signalScores.click?.firedRules?.includes('curiosity_gap') ?? false;
+  const linkMultiplier = hasExternalLink && hasCuriosityGap ? CLICK_GAP_MULTIPLIER : 1.0;
 
   // 7. Account health multiplier
   const healthMultiplier = accountHealth?.reachMultiplier ?? 1.0;
@@ -343,7 +347,10 @@ function recompute(
       : OFF_PEAK_MULTIPLIER;
   const trendMultiplier = isTrending ? TRENDING_MULTIPLIER : 1.0;
   const mediaMultiplier = hasMedia ? IMAGE_MULTIPLIER : 1.0;
-  const linkMultiplier = hasExternalLink ? CLICK_GAP_MULTIPLIER : 1.0;
+  // Same gap-gated logic as computeForecast — only multiply when the
+  // curiosity gap actually exists, so what-if scenarios don't double-count.
+  const hasCuriosityGap = analysis.signalScores.click?.firedRules?.includes('curiosity_gap') ?? false;
+  const linkMultiplier = hasExternalLink && hasCuriosityGap ? CLICK_GAP_MULTIPLIER : 1.0;
   const healthMultiplier = accountHealth?.reachMultiplier ?? 1.0;
   const calibrationFactor = accountHealth?.forecastCorrectionFactor ?? 1.0;
 

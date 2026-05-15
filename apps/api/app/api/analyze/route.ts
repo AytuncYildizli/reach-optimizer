@@ -11,8 +11,20 @@ import type {
   AnalyzeRequest,
   AnalyzeResponse,
   ErrorResponse,
+  ScoreTier,
   Suggestion,
 } from '@reach/shared-types';
+
+// Tier ranges mirror packages/rules-engine/src/config/weights.json. We
+// recompute tier here because AI/trending deltas can push the score across a
+// tier boundary after engine.evaluate returned its initial tier.
+function tierForScore(score: number): ScoreTier {
+  if (score >= 80) return 'perfect';
+  if (score >= 61) return 'excellent';
+  if (score >= 41) return 'good';
+  if (score >= 21) return 'below_average';
+  return 'critical';
+}
 
 // Force Node.js runtime (Anthropic SDK needs net/tls)
 export const runtime = 'nodejs';
@@ -118,6 +130,9 @@ export async function POST(request: NextRequest) {
     trendingAlignment,
   };
   finalResult.score = Math.max(0, Math.min(100, finalResult.score + aiPointsDelta + trendingDelta));
+  // Recompute tier so direct API consumers see consistent score+tier pairs
+  // even when the AI/trending delta crosses a band boundary.
+  finalResult.tier = tierForScore(finalResult.score);
   finalResult.suggestions.push(...aiSuggestions);
 
   if (userId) {
