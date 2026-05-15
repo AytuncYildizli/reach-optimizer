@@ -81,12 +81,15 @@ function requestServerAnalysis(text: string): void {
     chrome.storage.local.get(['authToken', 'anthropicKey'], (result) => {
       if (chrome.runtime.lastError) return;
 
-      if (result.authToken) {
-        // Has auth token → use server (gets trending + slop + DB tracking)
-        doServerRequest(text);
-      } else if (result.anthropicKey) {
-        // Has BYOK key but no auth → do slop detection directly
+      // BYOK takes precedence: the popup's BYOK promise is "AI features use
+      // your key directly, no server upload." If the user has explicitly set
+      // an Anthropic key, honor that even when they're also signed in. To
+      // re-enable server-side trending/DB tracking, the user clears the key.
+      if (result.anthropicKey) {
         doBYOKSlopDetection(text);
+      } else if (result.authToken) {
+        // No BYOK key but signed in → server path for trending + slop + DB.
+        doServerRequest(text);
       }
       // Neither → local scoring only (already done)
     });
@@ -103,6 +106,11 @@ function doBYOKSlopDetection(text: string): void {
   isServerPending = true;
   if (setGlobalServerPending) setGlobalServerPending(true);
 
+  // Capture the draft text + analysis snapshot at request time so a late
+  // response can't merge into a different draft. If the user keeps typing
+  // before Anthropic answers, we discard the stale response.
+  const requestText = text;
+
   try {
     chrome.runtime.sendMessage(
       {
@@ -118,6 +126,9 @@ Look for: generic phrases, buzzwords, forced structure, lack of personality, "de
       (response) => {
         isServerPending = false;
         if (setGlobalServerPending) setGlobalServerPending(false);
+
+        // Stale-response guard: if the composer has moved on, discard.
+        if (requestText !== latestText) return;
 
         if (response?.ok && response.data?.text && latestClientAnalysis) {
           try {
@@ -160,6 +171,10 @@ function doServerRequest(text: string): void {
   isServerPending = true;
   if (setGlobalServerPending) setGlobalServerPending(true);
 
+  // Same stale-response guard as the BYOK path: discard if the composer
+  // has moved on between request and response.
+  const requestText = text;
+
   try {
     // Send the same composer context the client used for scoring so the
     // server's DB-persisted score matches what the user sees on screen.
@@ -187,6 +202,9 @@ function doServerRequest(text: string): void {
 
         isServerPending = false;
         if (setGlobalServerPending) setGlobalServerPending(false);
+
+        // Stale-response guard.
+        if (requestText !== latestText) return;
 
         if (response?.ok && response.data?.success && latestClientAnalysis) {
           if (setGlobalServerError) setGlobalServerError(false);
