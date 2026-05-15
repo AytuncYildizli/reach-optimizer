@@ -94,7 +94,16 @@ Return JSON: {"suggestions": ["v1", "v2", "v3"]}`;
             // Fallback: try server
             chrome.runtime.sendMessage(
               { type: 'API_REQUEST', endpoint: '/api/tweets/auto-optimize', method: 'POST',
-                body: { content: text, maxRounds: 2 } },
+                body: {
+                  content: text,
+                  maxRounds: 2,
+                  // Pass media context so the server scores original + variations
+                  // with the same hasMedia state the client used. Without this,
+                  // a media-attached tweet's server origScore is text-only and
+                  // valid improvements get filtered out as "already strong".
+                  hasMedia: !!hasMedia,
+                  mediaType: hasMedia ? 'image' : undefined,
+                } },
               (serverResponse) => {
                 setLoading(false);
                 if (serverResponse?.ok && serverResponse.data?.success) {
