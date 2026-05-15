@@ -16,6 +16,11 @@ function AutoOptimizeSection({ text, originalScore, hasMedia }: { text: string; 
   const [loading, setLoading] = useState(false);
   const [noKeyError, setNoKeyError] = useState(false);
   const [alreadyGood, setAlreadyGood] = useState(false);
+  // Local baseline used both for filtering variations AND for the displayed
+  // delta. The `originalScore` prop may include the server's AI/trending
+  // delta; variations are scored locally without those, so comparing against
+  // the local baseline is the apples-to-apples comparison.
+  const [localBaseline, setLocalBaseline] = useState<number>(originalScore);
 
   useEffect(() => { setResults([]); setNoKeyError(false); setAlreadyGood(false); }, [text]);
 
@@ -27,6 +32,7 @@ function AutoOptimizeSection({ text, originalScore, hasMedia }: { text: string; 
     // 1. Score original with correct context
     const originalResult = localEngine.evaluate({ text, platform: 'x', isThread: false, hasMedia: !!hasMedia });
     const origScore = originalResult.score;
+    setLocalBaseline(origScore);
 
     // 2. Find failing rules to tell the AI what to fix
     const failingRules = originalResult.suggestions
@@ -202,7 +208,7 @@ Return JSON: {"suggestions": ["v1", "v2", "v3"]}`;
         <div className="reachos-section-label">{t('autoOptResults')}</div>
         <div className="reachos-autoopt-summary">
           <span className="reachos-autoopt-badge">
-            {results.length} {t('variations')} {'\u00B7'} +{results[0].score - originalScore} {t('improvement')}
+            {results.length} {t('variations')} {'\u00B7'} +{results[0].score - localBaseline} {t('improvement')}
           </span>
         </div>
         {results.map((s, i) => (
@@ -212,7 +218,7 @@ Return JSON: {"suggestions": ["v1", "v2", "v3"]}`;
                 {i === 0 ? '\uD83C\uDFC6' : '\uD83D\uDFE2'} {s.score}
               </span>
               <span className="reachos-rewrite-delta positive">
-                +{s.score - originalScore} {t('vsYours')}
+                +{s.score - localBaseline} {t('vsYours')}
               </span>
             </div>
             <div className="reachos-rewrite-text">{s.text}</div>

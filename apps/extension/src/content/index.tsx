@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { ScoreEngine } from "@reach/rules-engine";
-import type { AnalysisResult, TweetInput } from "@reach/shared-types";
+import type { AnalysisResult, ScoreTier, TweetInput } from "@reach/shared-types";
 import { ComposerDetector } from "./composer-detector";
 import { setupPostTracker } from "./post-tracker";
 import { setupReplyCoach } from "./reply-coach";
@@ -66,11 +66,26 @@ function mergeServerResult(
   return {
     ...clientAnalysis,
     score: mergedScore,
+    // Recompute tier from the merged score — otherwise a delta that crosses
+    // a tier boundary (e.g. local 58 + delta +8 → 66) keeps the old tier
+    // label ("good") and overlay color while showing the new score number.
+    tier: tierForScore(mergedScore),
     aiSlopScore: serverData.aiSlopScore ?? clientAnalysis.aiSlopScore,
     suggestions: [...clientAnalysis.suggestions, ...serverOnlySuggestions],
     trendingAlignment: serverData.trendingAlignment ?? null,
     isServerEnhanced: true,
   };
+}
+
+// Tier ranges mirror packages/rules-engine/src/config/weights.json. Inlined
+// here so the extension doesn't need to import weights.json into the
+// content-script bundle just to recompute a label on every merge.
+function tierForScore(score: number): ScoreTier {
+  if (score >= 80) return 'perfect';
+  if (score >= 61) return 'excellent';
+  if (score >= 41) return 'good';
+  if (score >= 21) return 'below_average';
+  return 'critical';
 }
 
 /**
