@@ -293,6 +293,10 @@ function buildScenarios(
       hasMedia: true,
       timingStatus: 'good_now',
       trending: true,
+      // Combined = apply every suggested improvement, so force the gap on.
+      // Without this, the combined row undercounts vs the standalone
+      // "Add a curiosity gap" row when the user has a bare link.
+      curiosityGap: true,
     });
     scenarios.push({
       id: 'combined',
@@ -320,6 +324,11 @@ function recompute(
     hasMedia?: boolean;
     timingStatus?: 'good_now' | 'better_later' | 'off_peak';
     trending?: boolean;
+    /** Force the curiosity-gap multiplier on/off regardless of whether the
+     * rule fires in the current draft. Used by the "Add a curiosity gap"
+     * and "Combined optimizations" scenarios so they aren't dependent on
+     * whether the user has already written the gap text. */
+    curiosityGap?: boolean;
   },
 ): number {
   const { analysis, accountHealth, avgViews, trackedTweetCount } = input;
@@ -347,9 +356,12 @@ function recompute(
       : OFF_PEAK_MULTIPLIER;
   const trendMultiplier = isTrending ? TRENDING_MULTIPLIER : 1.0;
   const mediaMultiplier = hasMedia ? IMAGE_MULTIPLIER : 1.0;
-  // Same gap-gated logic as computeForecast — only multiply when the
-  // curiosity gap actually exists, so what-if scenarios don't double-count.
-  const hasCuriosityGap = analysis.signalScores.click?.firedRules?.includes('curiosity_gap') ?? false;
+  // Same gap-gated logic as computeForecast, with an explicit override so
+  // the "Combined optimizations" scenario can force the gap on without
+  // having to mutate signalScores.
+  const hasCuriosityGap =
+    overrides.curiosityGap ??
+    (analysis.signalScores.click?.firedRules?.includes('curiosity_gap') ?? false);
   const linkMultiplier = hasExternalLink && hasCuriosityGap ? CLICK_GAP_MULTIPLIER : 1.0;
   const healthMultiplier = accountHealth?.reachMultiplier ?? 1.0;
   const calibrationFactor = accountHealth?.forecastCorrectionFactor ?? 1.0;
