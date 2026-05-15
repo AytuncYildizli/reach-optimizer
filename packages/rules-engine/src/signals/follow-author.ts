@@ -26,8 +26,14 @@ export function predictFollowAuthor(ctx: PostContext): SignalScore {
       {
         name: 'distinctive_voice',
         weight: 1,
+        // Three independent voice signals:
+        //   - ellipsis / em-dash ending (trailing-off style)
+        //   - lowercase-start first line (lowercase styling — case-sensitive
+        //     so we don't false-positive on every capitalized English tweet)
+        //   - declarative "my rule" / "my take" framing
         test: (c) =>
-          /(\.\.\.\s*$|—\s*$|^\s*[a-z])/i.test(c.firstLine) ||
+          /(\.\.\.\s*$|—\s*$)/.test(c.firstLine) ||
+          /^\s*[a-z]/.test(c.firstLine) ||
           /\b(I always|I never|my rule|my take|my advice)\b/i.test(c.text),
       },
     ],

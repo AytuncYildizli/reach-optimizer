@@ -325,14 +325,18 @@ async function analyzeRuleLift(
       }
     }
 
-    // Also check suggestions for both v3 ('penalty-link-external') and v4
-    // ('signal:reply') rule IDs.
+    // Consult suggestions ONLY for v3 ruleIds. In v3 the suggestions list
+    // contained exclusively triggered rules, so it doubles as a fired-rules
+    // fallback for older DB rows. In v4 it also carries low-score improvement
+    // nudges (e.g. `signal:reply` when reply.score === 0), so importing those
+    // would pollute calibration buckets with un-fired signals — leading to
+    // inverted lift estimates. v4 fired data already came from signalScores.
     const suggestions = analysis.suggestions as Array<{ ruleId?: string }> | null;
     if (Array.isArray(suggestions)) {
       for (const s of suggestions) {
         if (!s.ruleId) continue;
-        // Strip the v4 'signal:' prefix so the lift bucket matches ALL_RULES.
-        firedRules.add(s.ruleId.replace(/^signal:/, ''));
+        if (s.ruleId.startsWith('signal:')) continue;
+        firedRules.add(s.ruleId);
       }
     }
 
