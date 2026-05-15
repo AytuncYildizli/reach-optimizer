@@ -3,32 +3,36 @@ import { verifyToken } from '@lib/auth';
 import { applyRateLimit } from '@lib/middleware';
 import { prisma } from '@lib/db';
 import { env } from '@lib/env';
-import { ScoreEngine, allClientRules } from '@reach/rules-engine';
+import { ScoreEngine } from '@reach/rules-engine';
 import { AIAnalyzer } from '@reach/ai-checks';
 import { getCachedTrends, checkTrendingAlignment } from '@lib/trending';
-import type { AnalyzeRequest, AnalyzeResponse, ErrorResponse, AnalysisResult } from '@reach/shared-types';
+import type {
+  AnalysisResult,
+  AnalyzeRequest,
+  AnalyzeResponse,
+  ErrorResponse,
+  Suggestion,
+} from '@reach/shared-types';
 
 // Force Node.js runtime (Anthropic SDK needs net/tls)
 export const runtime = 'nodejs';
 export const maxDuration = 30;
 
-const engine = new ScoreEngine(allClientRules);
+const engine = new ScoreEngine();
 
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204 });
 }
 
 export async function POST(request: NextRequest) {
-  // 1. Parse and validate body first
   const body: AnalyzeRequest = await request.json();
   if (!body.content || typeof body.content !== 'string') {
     return NextResponse.json(
       { success: false, error: 'Content is required', code: 'VALIDATION_ERROR' } satisfies ErrorResponse,
-      { status: 400 }
+      { status: 400 },
     );
   }
 
-  // 2. Try auth (optional in beta)
   let userId: string | null = null;
   const authHeader = request.headers.get('Authorization');
   if (authHeader?.startsWith('Bearer ')) {
@@ -36,16 +40,16 @@ export async function POST(request: NextRequest) {
     if (auth) userId = auth.userId;
   }
 
-  // 3. Rate limit by userId or IP
   const identifier = userId ?? (request.headers.get('x-forwarded-for') ?? 'anonymous');
   const rateLimited = applyRateLimit(request, identifier);
   if (rateLimited) return rateLimited;
 
-  // 4. Run AI analysis only — client already scored the tweet with correct
-  //    context (hasMedia, etc). Server only adds AI checks + trending.
+  // AI analysis only modifies the AI suggestion list and aiSlopScore; it does
+  // NOT replace the client's score. The client has the correct hasMedia /
+  // hasVideo / isQuoteTweet context and scores authoritatively.
   let aiSlopScore: number | null = null;
   let aiPointsDelta = 0;
-  const aiSuggestions: AnalysisResult['suggestions'] = [];
+  const aiSuggestions: Suggestion[] = [];
 
   if (env.ANTHROPIC_API_KEY) {
     try {
@@ -71,17 +75,17 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // 5. Trending topic alignment (+5 bonus)
+  // Trending topic alignment (+5 bonus) — kept as a server-side overlay; treated
+  // as a positive nudge to score, independent of the 22-signal model.
   let trendingAlignment: AnalysisResult['trendingAlignment'] = null;
   let trendingDelta = 0;
   try {
     const trendingData = await getCachedTrends();
     const alignment = checkTrendingAlignment(body.content, trendingData.trends);
     trendingAlignment = alignment;
-
     if (alignment.isAligned) {
       trendingDelta = alignment.bonusPoints;
-      const trendNames = alignment.matchedTrends.map(t => t.name).join(', ');
+      const trendNames = alignment.matchedTrends.map((t) => t.name).join(', ');
       aiSuggestions.push({
         ruleId: 'server-trending-boost',
         severity: 'positive',
@@ -93,28 +97,29 @@ export async function POST(request: NextRequest) {
     console.error('[Analyze] Trending alignment check failed (non-blocking):', error);
   }
 
-  // 6. Build server-only result — client will merge the DELTA, not replace its score.
-  //    We still run rules server-side for the DB record, but the extension ignores
-  //    the server reachScore and only uses aiPointsDelta + trendingDelta.
-  const serverRulesResult = engine.evaluate({
+  // Run the v4 engine server-side with the SAME composer context the client
+  // sees, so persisted scores don't diverge from displayed scores. Falls back
+  // to text-only evaluation for older clients that don't send the context.
+  const serverResult = engine.evaluate({
     text: body.content,
     platform: body.platform ?? 'x',
-    isThread: false,
-    hasMedia: false,
+    isThread: body.isThread ?? false,
+    hasMedia: body.hasMedia ?? false,
+    mediaType: body.mediaType,
+    isQuoteTweet: body.isQuoteTweet,
+    quotedText: body.quotedText,
+    quotedMediaType: body.quotedMediaType,
   });
 
   const finalResult: AnalysisResult = {
-    ...serverRulesResult,
+    ...serverResult,
     isServerEnhanced: true,
     aiSlopScore,
     trendingAlignment,
   };
-  // Apply AI + trending deltas to the server-side score for DB storage
-  finalResult.reachScore = Math.max(0, Math.min(100, finalResult.reachScore + aiPointsDelta + trendingDelta));
-  finalResult.breakdown.bonuses += trendingDelta;
+  finalResult.score = Math.max(0, Math.min(100, finalResult.score + aiPointsDelta + trendingDelta));
   finalResult.suggestions.push(...aiSuggestions);
 
-  // 7. Save to DB only if authenticated
   if (userId) {
     try {
       await prisma.$transaction([
@@ -123,15 +128,17 @@ export async function POST(request: NextRequest) {
             userId,
             contentText: body.content,
             platform: body.platform ?? 'x',
-            reachScore: finalResult.reachScore,
-            hookScore: finalResult.breakdown.hook,
-            structureScore: finalResult.breakdown.structure,
-            engagementScore: finalResult.breakdown.engagement,
-            penaltyTotal: finalResult.breakdown.penalties,
-            bonusTotal: finalResult.breakdown.bonuses,
-            aiSlopScore: aiSlopScore,
+            // Persist the v4 single score in the legacy reachScore column so
+            // downstream analytics keep working without a schema migration.
+            reachScore: finalResult.score,
+            hookScore: 0,
+            structureScore: 0,
+            engagementScore: 0,
+            penaltyTotal: 0,
+            bonusTotal: 0,
+            aiSlopScore,
             suggestions: JSON.parse(JSON.stringify(finalResult.suggestions)),
-            ruleResults: JSON.parse(JSON.stringify(finalResult.highlights)),
+            ruleResults: JSON.parse(JSON.stringify(finalResult.signalScores)),
           },
         }),
       ]);
@@ -140,11 +147,10 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({
+  const response: AnalyzeResponse & { serverDelta: number } = {
     success: true,
     data: finalResult,
-    // Server-only deltas — client should ADD these to its own score
-    // instead of replacing its score with the server's
     serverDelta: aiPointsDelta + trendingDelta,
-  });
+  };
+  return NextResponse.json(response);
 }

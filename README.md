@@ -14,20 +14,22 @@
 
 ---
 
-ReachOS is a Chrome extension that scores your tweets in real time against 36 algorithm-research-backed rules, predicts your reach, and shows you exactly how to improve it. BYOK (Bring Your Own Keys) - fully self-hostable.
+ReachOS is a Chrome extension that scores your tweets in real time against the 22-signal taxonomy [xAI published on 2026-05-15](https://github.com/xai-org/x-algorithm), predicts your reach, and shows you exactly how to improve it. BYOK (Bring Your Own Keys) — fully self-hostable.
 
 ```
 You type a tweet.
 ReachOS says: "This will reach ~14,200 people.
-               Remove the link → 21,600.
+               Add a curiosity gap before the link → 16,800.
                Add an image → 19,600.
-               Both → 34,400."
+               Both → 23,200."
 ```
+
+> **v4.0 (May 2026):** ReachOS realigned to xAI's published Phoenix-era algorithm. Outbound links are no longer penalized; instead, descriptive link anchors with a curiosity gap drive the new `click` signal. See [CHANGELOG.md](CHANGELOG.md) for the full migration notes.
 
 ## Features
 
 ### Score Overlay + Reach Forecast
-Real-time 0-100 score as you type in the X.com composer. Breakdown bars for Hook, Structure, Engagement, Penalties, and Bonuses. Reach Forecast predicts impressions with interactive what-if scenarios.
+Real-time 0-100 score as you type in the X.com composer. Signal bars grouped into 4 buckets — Engagement, Curiosity, Dwell, Risk — summing the 22 underlying signal predictors. Reach Forecast predicts impressions with interactive what-if scenarios.
 
 ![Score Overlay with Reach Forecast](docs/screenshots/overlay-score-forecast.png)
 
@@ -60,43 +62,51 @@ Post tweet → Save prediction → Fetch real metrics (15min)
 
 ## How It Works
 
-### Scoring Engine (35 Rules)
+### Scoring Engine (22 Signals)
 
-Every tweet is scored against 36 rules derived from the open-sourced X algorithm and viral pattern research:
+ReachOS v4.0 mirrors the 22 signals scored by `home-mixer/scorers/ranking_scorer.rs` in `xai-org/x-algorithm`. Each signal has its own predictor file in [`packages/rules-engine/src/signals/`](packages/rules-engine/src/signals/) — and every signal name matches the Rust source exactly.
 
-| Category | Rules | What It Checks |
-|----------|-------|----------------|
-| **Hook** | 12 | Opening strength, open loops, contrarian claims, story openers, pattern interrupts, bold claims, list promises |
-| **Structure** | 5 | Character length, hashtag/emoji spam, thread length, line breaks |
-| **Engagement** | 2 | CTA presence, bookmark-worthy formats |
-| **Penalties** | 9 | Engagement bait, text walls, AI slop words/structure, stale formulas, hedging, external links, combative tone, grammar, all-caps |
-| **Bonuses** | 7 | First-person voice, media, choice questions, sentiment, readability, contrast/surprise, hashtag placement |
+| Bucket | Signals | What it predicts |
+|--------|---------|------------------|
+| **Engagement** | favorite, reply, retweet, quote, share, share_via_dm, share_via_copy_link, click, photo_expand, vqv, quoted_click, quoted_vqv | Direct positive interactions X scores explicitly |
+| **Curiosity** | profile_click, follow_author | "Who is this person?" → audience-growth signal |
+| **Dwell** | dwell, cont_dwell_time, cont_click_dwell_time | Reader stays vs. scrolls past |
+| **Risk** | not_dwelled, not_interested, block_author, mute_author, report | Negative actions X scores as soft/hard penalties |
 
-Base score: 30. Category caps prevent any single area from dominating. Final score: 0-100.
+Base score 30 + Σ positive signal predictors (max 95) + Σ negative signal predictors (min −50), clamped to 0–100. Five signals are **conditional**: `photo_expand` (needs image), `vqv` (needs video), `cont_click_dwell_time` (needs clickable content), `quoted_click` / `quoted_vqv` (need quote-tweet).
 
-### Key Algorithm Signals (Research-Backed)
+### Key signal weights (mirror of `ranking_scorer.rs`)
 
-| Signal | Weight | Source |
-|--------|--------|--------|
-| Reply | 27x a like | twitter/the-algorithm |
-| Author reply to own tweet | 150x a like | twitter/the-algorithm |
-| Bookmark | 20x a like | twitter/the-algorithm |
-| Media attachment | 2x Earlybird boost | twitter/the-algorithm |
-| External link | -30 to -50% reach | Platform testing, Oct 2025 softened |
-| 3+ hashtags | ~40% engagement drop | Engagement studies |
-| Negative/combative tone | Grok penalty | 2026 sentiment analysis |
+| Signal | Max points | Why this weight |
+|--------|-----------|-----------------|
+| `reply` | +12 | X's king positive signal (confirmed ~27× like in 2023 leak; retained in May 2026) |
+| `click` | +8 | **Replaces v3's link penalty.** X scores URL clicks as a positive engagement |
+| `dwell` | +8 | Single-view dwell, scored independently of `cont_dwell_time` |
+| `favorite` | +7 | Likes — broad signal but lower per-action than reply |
+| `profile_click` | +7 | Curiosity → follow funnel |
+| `retweet` | +7 | Quotable, succinct content |
+| `share_via_dm` | +6 | NEW in May 2026: DM-share scored as its own signal |
+| `quote` | +6 | Quote-tweet-worthiness (contrarian claims drive this) |
+| `share` | +5 | Generic broadcast share |
+| `follow_author` | +5 | Follow conversion |
+| `photo_expand` | +4 | Conditional on image attached |
+| `vqv` | +4 | Conditional on video attached |
+| `not_dwelled` | −12 | Scroll-past risk |
+| `report` | −15 | Hardest negative (mirrors ~−738× like in 2023 leak) |
+
+> What's **removed** from v3.0: outbound-link penalty, 3+ hashtag penalty, unknown-language penalty, competitor-mention penalty. None have any visible representation in X's May-2026 published code.
 
 ### Reach Forecast Model
 
 ```
 predictedReach = baseReach
-                 * contentMultiplier    (score/50 — score 75 = 1.5x)
-                 * timeMultiplier       (peak=1.25x, good=1.12x, off=0.85x)
-                 * trendMultiplier      (trending=1.15x)
-                 * mediaMultiplier      (image/video=1.38x)
-                 * linkPenalty          (external link=0.55x)
-                 * healthMultiplier     (account health 0.6-1.3x)
-                 * calibrationFactor    (auto-corrects from historical data)
+                 * contentMultiplier      (score/50 — score 75 = 1.5x)
+                 * timeMultiplier         (peak=1.25x, good=1.12x, off=0.85x)
+                 * trendMultiplier        (trending=1.15x)
+                 * mediaMultiplier        (image=1.35x, video=1.45x)
+                 * clickGapMultiplier     (link + curiosity gap=1.18x — POSITIVE in v4)
+                 * healthMultiplier       (account health 0.6-1.3x)
+                 * calibrationFactor      (auto-corrects from historical data)
 ```
 
 `baseReach` = average views from your tracked tweets, or `followers * 5%` if no data yet.

@@ -1,135 +1,125 @@
 import type {
-  RuleDefinition,
-  TweetInput,
-  RuleResult,
+  AnalysisResult,
+  PostContext,
+  ScoreTier,
+  SignalName,
+  SignalScore,
+  Suggestion,
   TextHighlight,
+  TweetInput,
 } from '@reach/shared-types';
-import type { AnalysisResult, ScoreBreakdown, ScoreTier, Suggestion } from '@reach/shared-types';
+import { SIGNAL_NAMES } from '@reach/shared-types';
 import weights from './config/weights.json';
+import { buildContext } from './context';
+import { runAllSignals } from './signals';
+
+const TIER_ORDER: ScoreTier[] = ['critical', 'below_average', 'good', 'excellent', 'perfect'];
 
 export class ScoreEngine {
-  private rules: RuleDefinition[];
-
-  constructor(rules: RuleDefinition[]) {
-    this.rules = rules;
-  }
-
   evaluate(input: TweetInput): AnalysisResult {
-    // Guard: very short or empty text gets base score with no rules
-    if (!input.text || input.text.trim().length < 3) {
-      return {
-        reachScore: 0,
-        tier: 'critical' as ScoreTier,
-        breakdown: { hook: 0, structure: 0, engagement: 0, penalties: 0, bonuses: 0 },
-        aiSlopScore: null,
-        suggestions: [],
-        highlights: [],
-        isServerEnhanced: false,
-      };
+    const ctx = buildContext(input);
+
+    if (!ctx.text || ctx.text.trim().length < 3) {
+      return emptyResult();
     }
 
-    const results: RuleResult[] = this.rules.map((rule) => rule.evaluate(input));
+    const signalScores = runAllSignals(ctx);
+    const applicableSignals: SignalName[] = SIGNAL_NAMES.filter((s) => signalScores[s].applicable);
 
-    const breakdown = this.calculateBreakdown(results);
-    const rawScore =
-      weights.baseScore +
-      breakdown.hook +
-      breakdown.structure +
-      breakdown.engagement +
-      breakdown.penalties +
-      breakdown.bonuses;
+    let total = weights.baseScore;
+    for (const name of applicableSignals) {
+      total += signalScores[name].score;
+    }
 
-    const reachScore = Math.max(0, Math.min(100, rawScore));
-    const tier = this.assignTier(reachScore);
-    const suggestions = this.collectSuggestions(results);
-    const highlights = this.collectHighlights(results);
+    const score = Math.max(0, Math.min(100, total));
+    const tier = assignTier(score);
+    const suggestions = collectSuggestions(signalScores);
 
     return {
-      reachScore,
+      score,
+      baseScore: weights.baseScore,
       tier,
-      breakdown,
+      signalScores,
+      applicableSignals,
       aiSlopScore: null,
       suggestions,
-      highlights,
+      highlights: [],
       isServerEnhanced: false,
     };
   }
 
-  private calculateBreakdown(results: RuleResult[]): ScoreBreakdown {
-    let hook = 0;
-    let structure = 0;
-    let engagement = 0;
-    let penalties = 0;
-    let bonuses = 0;
-
-    for (const result of results) {
-      if (!result.triggered) continue;
-
-      const rule = this.rules.find((r) => r.id === result.ruleId);
-      if (!rule) continue;
-
-      switch (rule.category) {
-        case 'hook':
-          hook += result.points;
-          break;
-        case 'structure':
-          structure += result.points;
-          break;
-        case 'engagement':
-          engagement += result.points;
-          break;
-        case 'penalty':
-          penalties += result.points;
-          break;
-        case 'bonus':
-          bonuses += result.points;
-          break;
-      }
-    }
-
-    // Move negative category scores into penalties (categories should be 0+)
-    if (hook < 0) { penalties += hook; hook = 0; }
-    if (structure < 0) { penalties += structure; structure = 0; }
-    if (engagement < 0) { penalties += engagement; engagement = 0; }
-
-    // Clamp per-category to limits from weights.json
-    hook = Math.min(weights.categories.hook.maxPoints, hook);
-    structure = Math.min(weights.categories.structure.maxPoints, structure);
-    engagement = Math.min(weights.categories.engagement.maxPoints, engagement);
-    penalties = Math.max(weights.categories.penalty.maxPenalty, Math.min(0, penalties));
-    bonuses = Math.max(0, Math.min(weights.categories.bonus.maxBonus, bonuses));
-
-    return { hook, structure, engagement, penalties, bonuses };
-  }
-
-  private assignTier(score: number): ScoreTier {
-    const tiers = weights.tiers;
-
-    if (score >= tiers.perfect.min && score <= tiers.perfect.max) return 'perfect';
-    if (score >= tiers.excellent.min && score <= tiers.excellent.max) return 'excellent';
-    if (score >= tiers.good.min && score <= tiers.good.max) return 'good';
-    if (score >= tiers.below_average.min && score <= tiers.below_average.max) return 'below_average';
-    return 'critical';
-  }
-
-  private collectSuggestions(results: RuleResult[]): Suggestion[] {
-    return results
-      .filter((r) => r.triggered && r.suggestion)
-      .map((r) => {
-        const rule = this.rules.find((def) => def.id === r.ruleId);
-        return {
-          ruleId: r.ruleId,
-          severity: r.severity,
-          title: rule?.name ?? r.ruleId,
-          description: r.suggestion!,
-          highlight: r.highlight,
-        };
-      });
-  }
-
-  private collectHighlights(results: RuleResult[]): TextHighlight[] {
-    return results
-      .filter((r) => r.triggered && r.highlight)
-      .map((r) => r.highlight!);
+  /** Expose context construction so consumers (server, tests) can reuse it. */
+  buildContext(input: TweetInput): PostContext {
+    return buildContext(input);
   }
 }
+
+function emptyResult(): AnalysisResult {
+  const empty = {} as Record<SignalName, SignalScore>;
+  for (const name of SIGNAL_NAMES) {
+    const cfg = (weights.signals as Record<string, { maxPoints?: number; maxPenalty?: number; type: 'positive' | 'negative'; bucket: string }>)[
+      name
+    ];
+    empty[name] = {
+      signal: name,
+      type: cfg.type,
+      bucket: cfg.bucket as SignalScore['bucket'],
+      score: 0,
+      max: cfg.type === 'positive' ? (cfg.maxPoints ?? 0) : (cfg.maxPenalty ?? 0),
+      applicable: false,
+      firedRules: [],
+      subRules: [],
+    };
+  }
+  return {
+    score: 0,
+    baseScore: weights.baseScore,
+    tier: 'critical',
+    signalScores: empty,
+    applicableSignals: [],
+    aiSlopScore: null,
+    suggestions: [],
+    highlights: [],
+    isServerEnhanced: false,
+  };
+}
+
+function assignTier(score: number): ScoreTier {
+  for (const tier of TIER_ORDER) {
+    const t = (weights.tiers as Record<string, { min: number; max: number }>)[tier];
+    if (score >= t.min && score <= t.max) return tier;
+  }
+  return 'critical';
+}
+
+function collectSuggestions(
+  signalScores: Record<SignalName, SignalScore>,
+): Suggestion[] {
+  const out: Suggestion[] = [];
+  for (const name of SIGNAL_NAMES) {
+    const s = signalScores[name];
+    if (!s.applicable || !s.suggestion) continue;
+    out.push({
+      signal: name,
+      ruleId: `signal:${name}`,
+      severity:
+        s.type === 'negative' && s.score < 0
+          ? 'warning'
+          : s.score >= s.max * 0.7
+            ? 'positive'
+            : 'info',
+      title: humanizeSignal(name),
+      description: s.suggestion,
+    });
+  }
+  return out;
+}
+
+function humanizeSignal(name: SignalName): string {
+  return name
+    .split('_')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+export type { TextHighlight };

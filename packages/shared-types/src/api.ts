@@ -3,6 +3,15 @@ import type { AnalysisResult, TrendingTopic } from './analysis';
 export interface AnalyzeRequest {
   content: string;
   platform: 'x' | 'linkedin' | 'threads';
+  /** Optional composer context — when present, the server engine evaluates
+   * with the same media/quote context the client sees, so persisted scores
+   * match the displayed score. Omitted by older extension builds. */
+  isThread?: boolean;
+  hasMedia?: boolean;
+  mediaType?: 'image' | 'video' | 'gif' | 'poll';
+  isQuoteTweet?: boolean;
+  quotedText?: string;
+  quotedMediaType?: 'image' | 'video' | 'gif' | 'poll';
 }
 
 export interface AnalyzeResponse {

@@ -1,89 +1,115 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { ScoreEngine } from '../engine';
-import { linkDetectionRule } from '../rules/link-detection';
-import type { TweetInput, RuleDefinition } from '@reach/shared-types';
+import weights from '../config/weights.json';
+import { SIGNAL_NAMES } from '@reach/shared-types';
 
-const baseInput: TweetInput = {
-  text: '',
-  platform: 'x',
-  isThread: false,
-  hasMedia: false,
-};
+const engine = new ScoreEngine();
 
-describe('ScoreEngine', () => {
-  it('returns score 0 for empty text', () => {
-    const engine = new ScoreEngine([]);
-    const result = engine.evaluate({ ...baseInput, text: '' });
-
-    expect(result.reachScore).toBe(0);
-    expect(result.tier).toBe('critical');
-    expect(result.suggestions).toHaveLength(0);
-  });
-
-  it('returns score 0 for very short text (< 3 chars)', () => {
-    const engine = new ScoreEngine([]);
-    const result = engine.evaluate({ ...baseInput, text: 'Hi' });
-
-    expect(result.reachScore).toBe(0);
-    expect(result.tier).toBe('critical');
-  });
-
-  it('returns base score of 30 with no rules', () => {
-    const engine = new ScoreEngine([]);
-    const result = engine.evaluate({ ...baseInput, text: 'Hello world' });
-
-    expect(result.reachScore).toBe(30);
-  });
-
-  it('applies link penalty correctly (30 + (-8) = 22)', () => {
-    const engine = new ScoreEngine([linkDetectionRule]);
-    const result = engine.evaluate({
-      ...baseInput,
-      text: 'Check this out https://example.com',
+describe('ScoreEngine v4', () => {
+  it('returns the v4 response shape', () => {
+    const r = engine.evaluate({
+      text: 'Hot take: you should ship faster. Change my mind?',
+      platform: 'x',
+      isThread: false,
+      hasMedia: false,
     });
-
-    expect(result.reachScore).toBe(22);
+    expect(r).toHaveProperty('score');
+    expect(r).toHaveProperty('baseScore', 30);
+    expect(r).toHaveProperty('signalScores');
+    expect(r).toHaveProperty('applicableSignals');
+    expect(r).not.toHaveProperty('reachScore');
+    expect(r).not.toHaveProperty('breakdown');
   });
 
-  it('clamps score between 0 and 100', () => {
-    // Create a rule that gives massive negative points
-    const extremePenaltyRule: RuleDefinition = {
-      id: 'test-extreme-penalty',
-      name: 'Extreme Penalty',
-      category: 'penalty',
-      runOn: 'client',
-      evaluate: () => ({
-        ruleId: 'test-extreme-penalty',
-        triggered: true,
-        points: -200,
-        severity: 'critical',
-      }),
-    };
-
-    const engine = new ScoreEngine([extremePenaltyRule]);
-    const result = engine.evaluate({ ...baseInput, text: 'test' });
-
-    expect(result.reachScore).toBeGreaterThanOrEqual(0);
-    expect(result.reachScore).toBeLessThanOrEqual(100);
-  });
-
-  it('assigns correct tier for score 30 (below_average)', () => {
-    const engine = new ScoreEngine([]);
-    const result = engine.evaluate({ ...baseInput, text: 'Hello world' });
-
-    expect(result.reachScore).toBe(30);
-    expect(result.tier).toBe('below_average');
-  });
-
-  it('collects suggestions from triggered rules', () => {
-    const engine = new ScoreEngine([linkDetectionRule]);
-    const result = engine.evaluate({
-      ...baseInput,
-      text: 'Visit https://example.com now',
+  it('signalScores contains all 22 signals', () => {
+    const r = engine.evaluate({
+      text: 'Normal tweet content.',
+      platform: 'x',
+      isThread: false,
+      hasMedia: false,
     });
+    const keys = Object.keys(r.signalScores).sort();
+    expect(keys).toEqual([...SIGNAL_NAMES].sort());
+  });
 
-    expect(result.suggestions.length).toBeGreaterThan(0);
-    expect(result.suggestions[0].ruleId).toBe('penalty-link-external');
-    expect(result.suggestions[0].severity).toBe('critical');
+  it('score is clamped to 0..100', () => {
+    const r = engine.evaluate({
+      text: 'a'.repeat(2000),
+      platform: 'x',
+      isThread: false,
+      hasMedia: false,
+    });
+    expect(r.score).toBeGreaterThanOrEqual(0);
+    expect(r.score).toBeLessThanOrEqual(100);
+  });
+
+  it('empty text returns score 0 critical tier', () => {
+    const r = engine.evaluate({
+      text: '',
+      platform: 'x',
+      isThread: false,
+      hasMedia: false,
+    });
+    expect(r.score).toBe(0);
+    expect(r.tier).toBe('critical');
+  });
+
+  it('applicable signals exclude inert conditional signals when no media/quote', () => {
+    const r = engine.evaluate({
+      text: 'Plain tweet, no media, no link.',
+      platform: 'x',
+      isThread: false,
+      hasMedia: false,
+    });
+    expect(r.applicableSignals).not.toContain('photo_expand');
+    expect(r.applicableSignals).not.toContain('vqv');
+    expect(r.applicableSignals).not.toContain('quoted_click');
+    expect(r.applicableSignals).not.toContain('quoted_vqv');
+  });
+
+  it('applicable signals include photo_expand when image present', () => {
+    const r = engine.evaluate({
+      text: 'Look at this. Notice the corner.',
+      platform: 'x',
+      isThread: false,
+      hasMedia: true,
+      mediaType: 'image',
+    });
+    expect(r.applicableSignals).toContain('photo_expand');
+  });
+
+  it('high-engagement post scores higher than dead post', () => {
+    const dead = engine.evaluate({
+      text: 'ok',
+      platform: 'x',
+      isThread: false,
+      hasMedia: false,
+    });
+    const great = engine.evaluate({
+      text:
+        "Hot take: most teams over-engineer auth. I built 3 SaaS products and the simplest one made $50K MRR. The complex one made $200.\n\nAgree or change my mind?",
+      platform: 'x',
+      isThread: false,
+      hasMedia: false,
+    });
+    expect(great.score).toBeGreaterThan(dead.score);
+    expect(great.score).toBeGreaterThanOrEqual(50);
+  });
+
+  it('weights.json has version 4.0.0', () => {
+    expect(weights.version).toBe('4.0.0');
+    expect(weights.baseScore).toBe(30);
+  });
+
+  it('suggestions reference signals, not v3 categories', () => {
+    const r = engine.evaluate({
+      text: 'a'.repeat(400),
+      platform: 'x',
+      isThread: false,
+      hasMedia: false,
+    });
+    for (const s of r.suggestions) {
+      expect(s.ruleId).toMatch(/^signal:/);
+    }
   });
 });

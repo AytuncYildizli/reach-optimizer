@@ -1,90 +1,171 @@
 import { useState, useEffect } from "react";
-import type { AnalysisResult, ScoreBreakdown, ScoreTier, Suggestion, TrendingAlignment, AccountHealth, ReachForecast as ReachForecastType, WhatIfScenario } from "@reach/shared-types";
+import type { AnalysisResult, ScoreTier, SignalBucket, SignalName, SignalScore, Suggestion, TrendingAlignment, AccountHealth, ReachForecast as ReachForecastType, WhatIfScenario } from "@reach/shared-types";
+import { ScoreEngine } from "@reach/rules-engine";
 import { t } from "./i18n";
 import { computeForecast, formatNumber } from "./forecast-engine";
 
+// Local scoring engine for auto-optimize (score variations client-side)
+const localEngine = new ScoreEngine();
+
 // ---------------------------------------------------------------------------
-// AutoOptimizeSection — iterative tweet optimization (autoresearch-inspired)
+// AutoOptimizeSection — score-aware optimization with client-side scoring
+// Uses user's own Anthropic key (BYOK) or falls back to server.
 // ---------------------------------------------------------------------------
-function AutoOptimizeSection({ text, originalScore }: { text: string; originalScore: number }) {
-  const [result, setResult] = useState<{
-    rounds: { round: number; bestText: string; bestScore: number; delta: number; alternatives: { text: string; score: number }[] }[];
-    bestText: string;
-    finalScore: number;
-    improvement: number;
-    totalGenerated: number;
-  } | null>(null);
+function AutoOptimizeSection({ text, originalScore, hasMedia }: { text: string; originalScore: number; hasMedia?: boolean }) {
+  const [results, setResults] = useState<{ text: string; score: number }[]>([]);
   const [loading, setLoading] = useState(false);
-  const [currentRound, setCurrentRound] = useState(0);
+  const [noKeyError, setNoKeyError] = useState(false);
+  const [alreadyGood, setAlreadyGood] = useState(false);
 
-  useEffect(() => { setResult(null); setCurrentRound(0); }, [text]);
+  useEffect(() => { setResults([]); setNoKeyError(false); setAlreadyGood(false); }, [text]);
 
-  const handleOptimize = () => {
+  const handleOptimize = async () => {
     setLoading(true);
-    setCurrentRound(1);
-    const timeout = setTimeout(() => { setLoading(false); setCurrentRound(0); }, 60000);
+    setNoKeyError(false);
+    setAlreadyGood(false);
 
-    // Simulate round progress (since we can't stream)
-    let round = 1;
-    const progressInterval = setInterval(() => {
-      round++;
-      if (round <= 5) setCurrentRound(round);
-      else clearInterval(progressInterval);
-    }, 3000); // ~3s per round estimate
+    // 1. Score original with correct context
+    const originalResult = localEngine.evaluate({ text, platform: 'x', isThread: false, hasMedia: !!hasMedia });
+    const origScore = originalResult.score;
+
+    // 2. Find failing rules to tell the AI what to fix
+    const failingRules = originalResult.suggestions
+      .filter(s => s.severity === 'critical' || s.severity === 'warning')
+      .map(s => s.description)
+      .slice(0, 5);
+
+    const failingContext = failingRules.length > 0
+      ? `\n\nTHIS TWEET LOSES POINTS ON:\n${failingRules.map((r, i) => `${i + 1}. ${r}`).join('\n')}\nFix these specific issues in your rewrites.`
+      : '';
+
+    // 3. Detect language
+    const isTurkish = /[çşğüöıİŞÇÖÜĞ]/.test(text) || /\b(bir|ve|bu|ile|için|ama|da|de)\b/i.test(text);
+    const lang = isTurkish ? 'Turkish' : 'English';
+
+    const systemPrompt = `You are an elite X/Twitter ghostwriter. You REARRANGE tweets to maximize reach. You NEVER add new information.
+
+RULES:
+- Tone: provocative and bold, NOT casual
+- Hook: strong pattern interrupt or bold claim in the first line
+- Length: ~2 sentences, 250-280 characters
+- End ~half with a sharp question, ~half with a bold statement
+- NO emoji, NO hashtags, NO AI words (delve, landscape, leverage, unleash, paradigm)
+- Add a call-to-action or question that invites replies (replies are 54x more valuable than likes in the X algorithm)
+- NEVER invent new facts, numbers, or claims not in the original
+- PRESERVE the original message and framing
+- Write in ${lang}
+
+Return ONLY valid JSON.`;
+
+    const userPrompt = `Rewrite this tweet 3 ways. SAME LANGUAGE (${lang}).
+
+RULES:
+1. PRESERVE the original message, analogies, and framing
+2. NEVER invent new facts or numbers not in the original
+3. Only change: word order, sentence structure, hook placement, ending
+4. Each rewrite under 280 chars
+5. NO emoji, NO hashtags
+${failingContext}
+
+V1: Lead with the strongest claim, end with a question
+V2: Start with a provocative question the tweet answers
+V3: Bold contrarian hook + call-to-action ending
+
+Original tweet: "${text.replace(/"/g, '\\"')}"
+
+Return JSON: {"suggestions": ["v1", "v2", "v3"]}`;
 
     try {
+      // Try BYOK first (direct Anthropic call via service worker)
       chrome.runtime.sendMessage(
-        { type: 'API_REQUEST', endpoint: '/api/tweets/auto-optimize', method: 'POST',
-          body: { content: text, maxRounds: 5 } },
+        {
+          type: 'DIRECT_ANTHROPIC',
+          systemPrompt,
+          userPrompt,
+          temperature: 0.4,
+          maxTokens: 1024,
+        },
         (response) => {
-          clearTimeout(timeout);
-          clearInterval(progressInterval);
-          setLoading(false);
-          if (chrome.runtime.lastError) return;
-          if (response?.ok && response.data?.success) {
-            setResult(response.data.data);
-            setCurrentRound(response.data.data.rounds.length);
+          if (chrome.runtime.lastError) { setLoading(false); return; }
+
+          if (response?.ok && response.data?.text) {
+            processAiResponse(response.data.text, origScore);
+          } else if (response?.error?.includes('No Anthropic API key')) {
+            // Fallback: try server
+            chrome.runtime.sendMessage(
+              { type: 'API_REQUEST', endpoint: '/api/tweets/auto-optimize', method: 'POST',
+                body: { content: text, maxRounds: 2 } },
+              (serverResponse) => {
+                setLoading(false);
+                if (serverResponse?.ok && serverResponse.data?.success) {
+                  const serverResults = serverResponse.data.data.rounds
+                    .flatMap((r: { alternatives: { text: string; score: number }[] }) => r.alternatives)
+                    .filter((v: { score: number }) => v.score > origScore)
+                    .sort((a: { score: number }, b: { score: number }) => b.score - a.score)
+                    .slice(0, 3);
+                  if (serverResults.length === 0) {
+                    setAlreadyGood(true);
+                  } else {
+                    setResults(serverResults);
+                  }
+                } else {
+                  setNoKeyError(true);
+                }
+              }
+            );
+          } else {
+            setLoading(false);
           }
         }
       );
     } catch {
-      clearTimeout(timeout);
-      clearInterval(progressInterval);
       setLoading(false);
+    }
+
+    function processAiResponse(rawText: string, baseScore: number) {
+      try {
+        const cleaned = rawText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        const parsed = JSON.parse(cleaned);
+        const suggestions: string[] = (parsed.suggestions || []).filter(
+          (s: string) => s && s.length > 10 && s.length <= 280
+        );
+
+        // Score each variation CLIENT-SIDE with correct hasMedia context
+        const scored = suggestions.map(s => ({
+          text: s,
+          score: localEngine.evaluate({ text: s, platform: 'x', isThread: false, hasMedia: !!hasMedia }).score,
+        }));
+
+        // ONLY show results that score HIGHER than original
+        const better = scored
+          .filter(s => s.score > baseScore)
+          .sort((a, b) => b.score - a.score);
+
+        setLoading(false);
+        if (better.length === 0) {
+          setAlreadyGood(true);
+        } else {
+          setResults(better);
+        }
+      } catch {
+        setLoading(false);
+      }
     }
   };
 
-  if (result) {
-    // Show final results — collect top 3 unique alternatives across all rounds
-    const topResults = result.rounds
-      .flatMap(r => r.alternatives)
-      .sort((a, b) => b.score - a.score)
-      .filter((v, i, arr) => arr.findIndex(x => x.text === v.text) === i)
-      .slice(0, 3);
-
+  // Already optimized message
+  if (alreadyGood) {
     return (
       <div className="reachos-rewrite-section">
-        <div className="reachos-section-label">{t('autoOptResults')}</div>
-        <div className="reachos-autoopt-summary">
-          <span className="reachos-autoopt-badge">
-            {result.rounds.length} {t('rounds')} {'\u00B7'} {result.totalGenerated} {t('variations')} {'\u00B7'} +{result.improvement} {t('improvement')}
-          </span>
-        </div>
-        {topResults.map((s, i) => (
-          <div key={i} className="reachos-rewrite-item" onClick={() => navigator.clipboard.writeText(s.text)}>
-            <div className="reachos-rewrite-header">
-              <span className="reachos-rewrite-score">
-                {i === 0 ? '\uD83C\uDFC6' : '\uD83D\uDFE2'} {s.score}
-              </span>
-              <span className={`reachos-rewrite-delta ${s.score - originalScore >= 0 ? 'positive' : 'negative'}`}>
-                {s.score - originalScore >= 0 ? '+' : ''}{s.score - originalScore} {t('vsYours')}
-              </span>
-            </div>
-            <div className="reachos-rewrite-text">{s.text}</div>
-            <div className="reachos-rewrite-copy">{t('copy')}</div>
+        <div style={{ padding: '8px 10px', background: 'rgba(0,186,124,0.1)', borderRadius: 8, border: '1px solid rgba(0,186,124,0.3)' }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#00ba7c', marginBottom: 2 }}>
+            Your tweet is already strong
           </div>
-        ))}
-        <button className="reachos-rewrite-btn" onClick={() => { setResult(null); setCurrentRound(0); }}
+          <div style={{ fontSize: 10, color: '#71767b' }}>
+            AI couldn't find a higher-scoring variation. Try changing the content or adding a question.
+          </div>
+        </div>
+        <button className="reachos-rewrite-btn" onClick={() => { setAlreadyGood(false); setResults([]); }}
           style={{ marginTop: '6px', background: 'transparent', border: '1px solid #2f3336', color: '#71767b' }}>
           {t('runAgain')}
         </button>
@@ -92,15 +173,61 @@ function AutoOptimizeSection({ text, originalScore }: { text: string; originalSc
     );
   }
 
+  // No API key error
+  if (noKeyError) {
+    return (
+      <div className="reachos-rewrite-section">
+        <div style={{ padding: '8px 10px', background: 'rgba(255,212,0,0.1)', borderRadius: 8, border: '1px solid rgba(255,212,0,0.3)' }}>
+          <div style={{ fontSize: 11, color: '#8a6d00', lineHeight: 1.4 }}>
+            Add your Anthropic API key in the extension popup Settings tab to enable AI optimization.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show results
+  if (results.length > 0) {
+    return (
+      <div className="reachos-rewrite-section">
+        <div className="reachos-section-label">{t('autoOptResults')}</div>
+        <div className="reachos-autoopt-summary">
+          <span className="reachos-autoopt-badge">
+            {results.length} {t('variations')} {'\u00B7'} +{results[0].score - originalScore} {t('improvement')}
+          </span>
+        </div>
+        {results.map((s, i) => (
+          <div key={i} className="reachos-rewrite-item" onClick={() => navigator.clipboard.writeText(s.text)}>
+            <div className="reachos-rewrite-header">
+              <span className="reachos-rewrite-score">
+                {i === 0 ? '\uD83C\uDFC6' : '\uD83D\uDFE2'} {s.score}
+              </span>
+              <span className="reachos-rewrite-delta positive">
+                +{s.score - originalScore} {t('vsYours')}
+              </span>
+            </div>
+            <div className="reachos-rewrite-text">{s.text}</div>
+            <div className="reachos-rewrite-copy">{t('copy')}</div>
+          </div>
+        ))}
+        <button className="reachos-rewrite-btn" onClick={() => { setResults([]); setAlreadyGood(false); }}
+          style={{ marginTop: '6px', background: 'transparent', border: '1px solid #2f3336', color: '#71767b' }}>
+          {t('runAgain')}
+        </button>
+      </div>
+    );
+  }
+
+  // Default: show button
   return (
     <div className="reachos-rewrite-section">
       {loading ? (
         <div className="reachos-autoopt-progress">
           <div className="reachos-section-label">{t('autoOptimizing')}</div>
           <div className="reachos-autoopt-bar-bg">
-            <div className="reachos-autoopt-bar" style={{ width: `${(currentRound / 5) * 100}%` }} />
+            <div className="reachos-autoopt-bar" style={{ width: '60%' }} />
           </div>
-          <div className="reachos-autoopt-round">Round {currentRound}/5 {'\u2014'} testing variations...</div>
+          <div className="reachos-autoopt-round">Generating &amp; scoring variations...</div>
         </div>
       ) : (
         <button className="reachos-rewrite-btn" onClick={handleOptimize} disabled={!text || text.length < 10}
@@ -181,26 +308,62 @@ function SelfReplyGenerator({ text }: { text: string }) {
   const handleGenerate = () => {
     setLoading(true);
     const timeout = setTimeout(() => setLoading(false), 15000);
-    try {
-      chrome.runtime.sendMessage(
-        { type: 'API_REQUEST', endpoint: '/api/suggest', method: 'POST',
-          body: { content: text, type: 'self-reply' } },
-        (response) => {
+
+    const isTurkish = /[çşğüöıİŞÇÖÜĞ]/.test(text) || /\b(bir|ve|bu|ile|için|ama|da|de)\b/i.test(text);
+    const lang = isTurkish ? 'Turkish' : 'English';
+
+    // Try BYOK first (direct Anthropic)
+    chrome.runtime.sendMessage(
+      {
+        type: 'DIRECT_ANTHROPIC',
+        systemPrompt: `You write self-replies for X/Twitter. A self-reply is the FIRST reply the author posts under their own tweet. Write in ${lang}. Return ONLY valid JSON.`,
+        userPrompt: `Write 1 self-reply for this tweet. RULES:
+1. SAME LANGUAGE as the original (${lang})
+2. Reference a SPECIFIC concept from the original tweet
+3. Add ONE specific detail or pointed question about something in the tweet
+4. Under 200 characters, no emoji unless original has them
+5. Sound like a real person continuing their thought
+
+Original tweet: "${text.replace(/"/g, '\\"')}"
+
+Return JSON: {"suggestions": ["self-reply"]}`,
+        temperature: 0.5,
+        maxTokens: 256,
+      },
+      (response) => {
+        if (response?.ok && response.data?.text) {
           clearTimeout(timeout);
           setLoading(false);
-          if (chrome.runtime.lastError) return;
-          if (response?.ok && response.data?.success && response.data.suggestions?.length > 0) {
-            const reply = response.data.suggestions[0];
-            setSelfReply(reply);
-            navigator.clipboard.writeText(reply); // Auto-copy
-            setCopiedReply(true);
-          }
+          try {
+            const cleaned = response.data.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            const parsed = JSON.parse(cleaned);
+            if (parsed.suggestions?.[0]) {
+              setSelfReply(parsed.suggestions[0]);
+              navigator.clipboard.writeText(parsed.suggestions[0]);
+              setCopiedReply(true);
+              return;
+            }
+          } catch { /* fall through to server */ }
         }
-      );
-    } catch {
-      clearTimeout(timeout);
-      setLoading(false);
-    }
+
+        // Fallback to server
+        chrome.runtime.sendMessage(
+          { type: 'API_REQUEST', endpoint: '/api/suggest', method: 'POST',
+            body: { content: text, type: 'self-reply' } },
+          (serverResponse) => {
+            clearTimeout(timeout);
+            setLoading(false);
+            if (chrome.runtime.lastError) return;
+            if (serverResponse?.ok && serverResponse.data?.success && serverResponse.data.suggestions?.length > 0) {
+              const reply = serverResponse.data.suggestions[0];
+              setSelfReply(reply);
+              navigator.clipboard.writeText(reply);
+              setCopiedReply(true);
+            }
+          }
+        );
+      }
+    );
   };
 
   // Reset when text changes
@@ -354,11 +517,12 @@ function ScoreCircle({ score, tier }: { score: number; tier: ScoreTier }) {
 // ---------------------------------------------------------------------------
 // BreakdownBars
 // ---------------------------------------------------------------------------
-interface BreakdownEntry {
+interface BucketEntry {
+  bucket: SignalBucket;
   label: string;
-  key: string;
   value: number;
   max: number;
+  signals: SignalScore[];
   color: string;
 }
 
@@ -368,45 +532,61 @@ function getBarColor(percentage: number): string {
   return "#f4212e";
 }
 
-function buildBreakdownEntries(breakdown: ScoreBreakdown): BreakdownEntry[] {
-  // v3.0 category caps: hook:30, structure:20, engagement:30, penalty:-55, bonus:15
-  const hookPct = (breakdown.hook / 30) * 100;
-  const structPct = (breakdown.structure / 20) * 100;
-  const engPct = (breakdown.engagement / 30) * 100;
-  const penaltyAbs = Math.abs(breakdown.penalties);
-  const penaltyPct = (penaltyAbs / 55) * 100;
-  const bonusPct = (breakdown.bonuses / 15) * 100;
+const BUCKET_ORDER: SignalBucket[] = ['engagement', 'curiosity', 'dwell', 'risk'];
 
-  return [
-    { label: t('hook'), key: "hook", value: breakdown.hook, max: 30, color: getBarColor(hookPct) },
-    { label: t('structure'), key: "structure", value: breakdown.structure, max: 20, color: getBarColor(structPct) },
-    { label: t('engagement'), key: "engagement", value: breakdown.engagement, max: 30, color: getBarColor(engPct) },
-    { label: t('penalties'), key: "penalties", value: breakdown.penalties, max: 55, color: "#f4212e" },
-    { label: t('bonuses'), key: "bonuses", value: breakdown.bonuses, max: 15, color: "#00ba7c" },
-  ].map((entry) => ({
-    ...entry,
-    // For penalties, use abs for the bar width percentage
-    ...(entry.key === "penalties"
-      ? { value: breakdown.penalties }
-      : {}),
-  }));
+const BUCKET_LABELS: Record<SignalBucket, string> = {
+  engagement: 'Engagement',
+  curiosity: 'Curiosity',
+  dwell: 'Dwell',
+  risk: 'Risk',
+};
+
+function groupByBucket(
+  signalScores: Record<SignalName, SignalScore>,
+  applicable: SignalName[],
+): BucketEntry[] {
+  const groups: Record<SignalBucket, SignalScore[]> = {
+    engagement: [],
+    curiosity: [],
+    dwell: [],
+    risk: [],
+  };
+  for (const name of applicable) {
+    const s = signalScores[name];
+    groups[s.bucket].push(s);
+  }
+  return BUCKET_ORDER.map((bucket) => {
+    const signals = groups[bucket];
+    const value = signals.reduce((sum, s) => sum + s.score, 0);
+    const max = signals.reduce(
+      (sum, s) => sum + (bucket === 'risk' ? Math.abs(s.max) : s.max),
+      0,
+    );
+    const pct = max > 0 ? (Math.abs(value) / max) * 100 : 0;
+    const color = bucket === 'risk' ? '#f4212e' : getBarColor(pct);
+    return { bucket, label: BUCKET_LABELS[bucket], value, max, signals, color };
+  });
 }
 
-function BreakdownBars({ breakdown }: { breakdown: ScoreBreakdown }) {
-  const entries = buildBreakdownEntries(breakdown);
+function BreakdownBars({
+  signalScores,
+  applicable,
+}: {
+  signalScores: Record<SignalName, SignalScore>;
+  applicable: SignalName[];
+}) {
+  const entries = groupByBucket(signalScores, applicable);
 
   return (
     <>
-      <div className="reachos-section-label">{t('breakdown')}</div>
+      <div className="reachos-section-label">Signals</div>
       <div className="reachos-breakdown">
         {entries.map((entry) => {
-          const displayValue = entry.value;
-          const barWidth = entry.key === "penalties"
+          const barWidth = entry.max > 0
             ? (Math.abs(entry.value) / entry.max) * 100
-            : (entry.value / entry.max) * 100;
-
+            : 0;
           return (
-            <div key={entry.key} className="reachos-breakdown-item">
+            <div key={entry.bucket} className="reachos-breakdown-item">
               <span className="reachos-breakdown-label">{entry.label}</span>
               <div className="reachos-breakdown-bar-bg">
                 <div
@@ -421,7 +601,7 @@ function BreakdownBars({ breakdown }: { breakdown: ScoreBreakdown }) {
                 className="reachos-breakdown-value"
                 style={{ color: entry.color }}
               >
-                {displayValue > 0 && entry.key !== "penalties" ? `+${displayValue}` : displayValue}
+                {entry.value > 0 ? `+${entry.value}` : entry.value}
               </span>
             </div>
           );
@@ -780,7 +960,7 @@ export function ScoreOverlay({ analysis, isServerPending, serverError, currentTe
     return (
       <div id="reachos-container">
         <div className="reachos-mini-badge" onClick={() => setMinimized(false)}>
-          <span className={`color-${analysis.tier}`}>{analysis.reachScore}</span>
+          <span className={`color-${analysis.tier}`}>{analysis.score}</span>
         </div>
       </div>
     );
@@ -828,10 +1008,10 @@ export function ScoreOverlay({ analysis, isServerPending, serverError, currentTe
           </div>
         ) : (
           <>
-            <ScoreCircle score={analysis.reachScore} tier={analysis.tier} />
+            <ScoreCircle score={analysis.score} tier={analysis.tier} />
             <TrendingBadge alignment={analysis.trendingAlignment} />
             <TimingIndicator />
-            <BreakdownBars breakdown={analysis.breakdown} />
+            <BreakdownBars signalScores={analysis.signalScores} applicable={analysis.applicableSignals} />
             <ReachForecastPanel
               analysis={analysis}
               hasMedia={hasMedia}
@@ -840,7 +1020,7 @@ export function ScoreOverlay({ analysis, isServerPending, serverError, currentTe
             <SuggestionList suggestions={analysis.suggestions} />
             <ReplyCoachBanner />
             {currentText && (
-              <AutoOptimizeSection text={currentText} originalScore={analysis.reachScore} />
+              <AutoOptimizeSection text={currentText} originalScore={analysis.score} hasMedia={hasMedia} />
             )}
             {currentText && (
               <SelfReplyGenerator text={currentText} />

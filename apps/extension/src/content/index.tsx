@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { createRoot } from "react-dom/client";
-import { ScoreEngine, allClientRules } from "@reach/rules-engine";
+import { ScoreEngine } from "@reach/rules-engine";
 import type { AnalysisResult, TweetInput } from "@reach/shared-types";
 import { ComposerDetector } from "./composer-detector";
 import { setupPostTracker } from "./post-tracker";
@@ -14,7 +14,7 @@ console.log("[ReachOS] Content script loaded");
 // ---------------------------------------------------------------------------
 // Score engine (all client-side rules)
 // ---------------------------------------------------------------------------
-const engine = new ScoreEngine(allClientRules);
+const engine = new ScoreEngine();
 
 // ---------------------------------------------------------------------------
 // Global state bridge — lets imperative code push state into React
@@ -39,6 +39,8 @@ let latestClientAnalysis: AnalysisResult | null = null;
 let latestText = "";
 let latestScore = 0;
 let latestPredictedReach = 0;
+let latestHasMedia = false;
+let latestMediaType: 'image' | 'video' | 'gif' | 'poll' | undefined;
 
 /**
  * Merge server AI-enhanced results into the current client analysis.
@@ -48,24 +50,22 @@ let latestPredictedReach = 0;
 function mergeServerResult(
   clientAnalysis: AnalysisResult,
   serverData: {
-    reachScore?: number;
+    score?: number;
     aiSlopScore?: number | null;
     suggestions?: AnalysisResult["suggestions"];
     trendingAlignment?: AnalysisResult["trendingAlignment"];
   },
   serverDelta: number,
 ): AnalysisResult {
-  // Collect only server-specific suggestions (AI slop, hook quality, trending)
   const serverOnlySuggestions = (serverData.suggestions ?? []).filter(
     s => s.ruleId.startsWith('server-'),
   );
 
-  // Merge: keep client score, ADD server delta (AI checks + trending)
-  const mergedScore = Math.max(0, Math.min(100, clientAnalysis.reachScore + serverDelta));
+  const mergedScore = Math.max(0, Math.min(100, clientAnalysis.score + serverDelta));
 
   return {
     ...clientAnalysis,
-    reachScore: mergedScore,
+    score: mergedScore,
     aiSlopScore: serverData.aiSlopScore ?? clientAnalysis.aiSlopScore,
     suggestions: [...clientAnalysis.suggestions, ...serverOnlySuggestions],
     trendingAlignment: serverData.trendingAlignment ?? null,
@@ -77,18 +77,82 @@ function mergeServerResult(
  * Request server analysis via the background service worker.
  */
 function requestServerAnalysis(text: string): void {
-  // Check if we have an auth token before making server requests
-  // If not logged in, silently skip — server analysis requires auth
   try {
-    chrome.storage.local.get('authToken', (result) => {
-      if (chrome.runtime.lastError || !result.authToken) {
-        // No token — skip server analysis (requires auth)
-        return;
+    chrome.storage.local.get(['authToken', 'anthropicKey'], (result) => {
+      if (chrome.runtime.lastError) return;
+
+      if (result.authToken) {
+        // Has auth token → use server (gets trending + slop + DB tracking)
+        doServerRequest(text);
+      } else if (result.anthropicKey) {
+        // Has BYOK key but no auth → do slop detection directly
+        doBYOKSlopDetection(text);
       }
-      doServerRequest(text);
+      // Neither → local scoring only (already done)
     });
   } catch {
     // Extension context lost — silently skip
+  }
+}
+
+/**
+ * Run AI slop detection directly using the user's own Anthropic key.
+ * No server needed - pure client-side BYOK.
+ */
+function doBYOKSlopDetection(text: string): void {
+  isServerPending = true;
+  if (setGlobalServerPending) setGlobalServerPending(true);
+
+  try {
+    chrome.runtime.sendMessage(
+      {
+        type: 'DIRECT_ANTHROPIC',
+        systemPrompt: `You are an AI slop detector for X/Twitter. Score how AI-generated a tweet sounds.
+Return JSON: {"slopScore": 0-100, "reason": "brief reason"}
+0 = clearly human, 100 = obviously AI-generated.
+Look for: generic phrases, buzzwords, forced structure, lack of personality, "delve/leverage/landscape/paradigm/unleash".`,
+        userPrompt: `Rate this tweet's AI slop level:\n"${text.replace(/"/g, '\\"')}"`,
+        maxTokens: 128,
+        temperature: 0.1,
+      },
+      (response) => {
+        isServerPending = false;
+        if (setGlobalServerPending) setGlobalServerPending(false);
+
+        if (response?.ok && response.data?.text && latestClientAnalysis) {
+          try {
+            const cleaned = response.data.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            const parsed = JSON.parse(cleaned);
+            const slopScore = typeof parsed.slopScore === 'number' ? parsed.slopScore : null;
+
+            if (slopScore !== null) {
+              // Apply slop penalty: high slop = point deduction
+              const slopDelta = slopScore > 60 ? -Math.round((slopScore - 60) * 0.15) : 0;
+              const merged = mergeServerResult(
+                latestClientAnalysis,
+                { aiSlopScore: slopScore, suggestions: slopScore > 60 ? [{
+                  ruleId: 'server-ai-slop',
+                  severity: 'warning' as const,
+                  title: 'AI Slop Detection',
+                  description: parsed.reason || 'Content sounds AI-generated. Add personal voice and specific details.',
+                }] : [] },
+                slopDelta,
+              );
+              // CRITICAL: Update latestScore so post-tracker captures the merged score
+              latestScore = merged.score;
+              if (setGlobalAnalysis) setGlobalAnalysis(merged);
+              if (setGlobalServerError) setGlobalServerError(false);
+              try {
+                chrome.runtime.sendMessage({ type: "UPDATE_BADGE", score: merged.score });
+              } catch { /* non-critical */ }
+            }
+          } catch { /* JSON parse failed — skip */ }
+        }
+      },
+    );
+  } catch {
+    isServerPending = false;
+    if (setGlobalServerPending) setGlobalServerPending(false);
   }
 }
 
@@ -97,12 +161,20 @@ function doServerRequest(text: string): void {
   if (setGlobalServerPending) setGlobalServerPending(true);
 
   try {
+    // Send the same composer context the client used for scoring so the
+    // server's DB-persisted score matches what the user sees on screen.
     chrome.runtime.sendMessage(
       {
         type: "API_REQUEST",
         endpoint: "/api/analyze",
         method: "POST",
-        body: { content: text, platform: "x" },
+        body: {
+          content: text,
+          platform: "x",
+          hasMedia: latestHasMedia,
+          mediaType: latestMediaType,
+          isThread: false,
+        },
       },
       (response) => {
         // Guard against extension context invalidated (SPA navigation, extension reload)
@@ -120,13 +192,16 @@ function doServerRequest(text: string): void {
           if (setGlobalServerError) setGlobalServerError(false);
           const delta = response.data.serverDelta ?? 0;
           const merged = mergeServerResult(latestClientAnalysis, response.data.data, delta);
+          // CRITICAL: Update latestScore so post-tracker captures the merged score
+          // This ensures lockPostedScore uses the same score the overlay displays
+          latestScore = merged.score;
           if (setGlobalAnalysis) setGlobalAnalysis(merged);
           try {
-            chrome.runtime.sendMessage({ type: "UPDATE_BADGE", score: merged.reachScore });
+            chrome.runtime.sendMessage({ type: "UPDATE_BADGE", score: merged.score });
           } catch { /* badge update is non-critical */ }
           console.log("[ReachOS] Server analysis merged", {
             aiSlopScore: merged.aiSlopScore,
-            reachScore: merged.reachScore,
+            score: merged.score,
           });
         } else {
           if (setGlobalServerError) setGlobalServerError(true);
@@ -328,9 +403,11 @@ function onComposerTextChange(_composerEl: HTMLElement, text: string): void {
   const result = engine.evaluate(input);
   latestClientAnalysis = result;
 
-  // Keep module-level state in sync for post tracker
+  // Keep module-level state in sync for post tracker and server requests
   latestText = text;
-  latestScore = result.reachScore;
+  latestScore = result.score;
+  latestHasMedia = hasMedia;
+  latestMediaType = hasMedia ? 'image' : undefined; // media kind not differentiated at composer-detect time yet
 
   // Detect external links for forecast
   const hasExternalLink = /https?:\/\/(?!(?:x\.com|twitter\.com|t\.co|pic\.twitter\.com))/i.test(text);
@@ -349,7 +426,7 @@ function onComposerTextChange(_composerEl: HTMLElement, text: string): void {
   }
 
   // Update extension icon badge with current score
-  chrome.runtime.sendMessage({ type: "UPDATE_BADGE", score: result.reachScore });
+  chrome.runtime.sendMessage({ type: "UPDATE_BADGE", score: result.score });
 
   // 2. Cancel any pending server request (user is still typing)
   if (serverTimer) {

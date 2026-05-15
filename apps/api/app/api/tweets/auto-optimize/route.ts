@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken } from '@lib/auth';
 import { applyRateLimit } from '@lib/middleware';
 import { env } from '@lib/env';
-import { ScoreEngine, allClientRules } from '@reach/rules-engine';
+import { ScoreEngine } from '@reach/rules-engine';
 import { detectLanguage, getLanguageInstruction } from '@reach/ai-checks';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60; // Allow up to 60s for multiple rounds
 
-const engine = new ScoreEngine(allClientRules);
+const engine = new ScoreEngine();
 
 interface OptimizeRound {
   round: number;
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
 
   // Score original
   const originalResult = engine.evaluate({ text: originalText, platform: 'x', isThread: false, hasMedia: false });
-  const originalScore = originalResult.reachScore;
+  const originalScore = originalResult.score;
 
   let currentBest = originalText;
   let currentBestScore = originalScore;
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
     // Score each variation
     const scored = variations.map(text => {
       const result = engine.evaluate({ text, platform: 'x', isThread: false, hasMedia: false });
-      return { text, score: result.reachScore };
+      return { text, score: result.score };
     });
 
     // Find the best this round
