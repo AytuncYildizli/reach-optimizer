@@ -125,6 +125,10 @@ async function handleDirectAnthropic(message: Message): Promise<unknown> {
         "Content-Type": "application/json",
         "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
+        // Required when calling from a browser-direct context (the extension
+        // service worker's chrome-extension:// origin counts as one).
+        // Without this opt-in, Anthropic rejects the CORS preflight.
+        "anthropic-dangerous-direct-browser-access": "true",
       },
       body: JSON.stringify({
         model: message.model || "claude-haiku-4-5-20251001",
