@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { env } from '@lib/env';
 import { verifyCronAuth } from '@lib/cron-auth';
-import { ScoreEngine, allClientRules } from '@reach/rules-engine';
+import { ScoreEngine } from '@reach/rules-engine';
 import pg from 'pg';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300; // 5 min for batch processing
 
-const engine = new ScoreEngine(allClientRules);
+const engine = new ScoreEngine();
 
 export async function GET(request: NextRequest) {
   const denied = verifyCronAuth(request);
@@ -37,11 +37,11 @@ export async function GET(request: NextRequest) {
       });
 
       let bestText = tweet.tweet_text;
-      let bestScore = original.reachScore;
+      let bestScore = original.score;
       let hookType = 'generic';
 
       // 3. If score < 70, run optimization (up to 3 rounds)
-      if (original.reachScore < 70 && env.ANTHROPIC_API_KEY) {
+      if (original.score < 70 && env.ANTHROPIC_API_KEY) {
         for (let round = 1; round <= 3; round++) {
           const variations = await generateVariations(env.ANTHROPIC_API_KEY, bestText, round);
 
@@ -52,28 +52,33 @@ export async function GET(request: NextRequest) {
               isThread: false,
               hasMedia: false,
             });
-            if (scored.reachScore > bestScore) {
+            if (scored.score > bestScore) {
               bestText = v;
-              bestScore = scored.reachScore;
+              bestScore = scored.score;
             }
           }
 
           // Plateau check
-          if (bestScore === original.reachScore) break;
+          if (bestScore === original.score) break;
           if (bestScore >= 75) break;
         }
       }
 
-      // Detect hook type from suggestions
+      // Detect hook type from v4 signals. v3 used rule IDs like
+      // 'hook-generic-pattern'; v4 emits 'signal:<name>'. Bucket by the
+      // strongest fired positive signal — the one driving the most points
+      // is a more honest "hook type" label than the legacy regex match.
       const finalResult = engine.evaluate({
         text: bestText,
         platform: 'x',
         isThread: false,
         hasMedia: false,
       });
-      const hookSuggestion = finalResult.suggestions.find((s) => s.ruleId.includes('hook'));
-      if (hookSuggestion) {
-        hookType = hookSuggestion.ruleId.replace('hook-', '').replace('penalty-', '');
+      const topSignal = Object.values(finalResult.signalScores)
+        .filter((s) => s.applicable && s.type === 'positive' && s.score > 0)
+        .sort((a, b) => b.score - a.score)[0];
+      if (topSignal) {
+        hookType = topSignal.signal;
       }
 
       // 4. Update DB - write optimized text + score + hook type
@@ -84,10 +89,10 @@ export async function GET(request: NextRequest) {
 
       results.push({
         id: tweet.id,
-        originalScore: original.reachScore,
+        originalScore: original.score,
         newScore: bestScore,
-        improved: bestScore > original.reachScore,
-        delta: bestScore - original.reachScore,
+        improved: bestScore > original.score,
+        delta: bestScore - original.score,
       });
     }
 

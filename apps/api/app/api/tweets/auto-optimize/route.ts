@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken } from '@lib/auth';
 import { applyRateLimit } from '@lib/middleware';
 import { env } from '@lib/env';
-import { ScoreEngine, allClientRules } from '@reach/rules-engine';
+import { ScoreEngine } from '@reach/rules-engine';
 import { detectLanguage, getLanguageInstruction } from '@reach/ai-checks';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60; // Allow up to 60s for multiple rounds
 
-const engine = new ScoreEngine(allClientRules);
+const engine = new ScoreEngine();
 
 interface OptimizeRound {
   round: number;
@@ -26,6 +26,13 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const originalText = body.content as string;
   const maxRounds = Math.min(body.maxRounds || 5, 5);
+  // Optional composer context — when present we score original + variations
+  // with the same media + quote state the client saw, so deltas line up and
+  // v4 signals (vqv, quoted_click, quoted_vqv) apply consistently.
+  const hasMedia = body.hasMedia === true;
+  const mediaType = body.mediaType as 'image' | 'video' | 'gif' | 'poll' | undefined;
+  const isQuoteTweet = body.isQuoteTweet === true;
+  const quotedMediaType = body.quotedMediaType as 'image' | 'video' | 'gif' | 'poll' | undefined;
 
   if (!originalText || originalText.length < 10) {
     return NextResponse.json({ success: false, error: 'Content too short' }, { status: 400 });
@@ -49,8 +56,8 @@ export async function POST(request: NextRequest) {
   }
 
   // Score original
-  const originalResult = engine.evaluate({ text: originalText, platform: 'x', isThread: false, hasMedia: false });
-  const originalScore = originalResult.reachScore;
+  const originalResult = engine.evaluate({ text: originalText, platform: 'x', isThread: false, hasMedia, mediaType, isQuoteTweet, quotedMediaType });
+  const originalScore = originalResult.score;
 
   let currentBest = originalText;
   let currentBestScore = originalScore;
@@ -62,10 +69,10 @@ export async function POST(request: NextRequest) {
     const variations = await generateVariations(env.ANTHROPIC_API_KEY, currentBest, round, originalText);
     totalGenerated += variations.length;
 
-    // Score each variation
+    // Score each variation with the same media + quote context as the original.
     const scored = variations.map(text => {
-      const result = engine.evaluate({ text, platform: 'x', isThread: false, hasMedia: false });
-      return { text, score: result.reachScore };
+      const result = engine.evaluate({ text, platform: 'x', isThread: false, hasMedia, mediaType, isQuoteTweet, quotedMediaType });
+      return { text, score: result.score };
     });
 
     // Find the best this round

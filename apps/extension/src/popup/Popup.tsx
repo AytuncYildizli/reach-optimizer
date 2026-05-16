@@ -339,7 +339,7 @@ function StatusTab({ user, onSignOut }: { user: UserInfo; onSignOut: () => void 
       <div style={{ background: '#e6f9f0', borderRadius: 10, padding: 12, marginBottom: 12, border: '1px solid #00ba7c' }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: '#00754d', marginBottom: 4 }}>Active</div>
         <div style={{ fontSize: 11, color: '#00754d', lineHeight: 1.5 }}>
-          36 rules scoring locally. AI features connected via your server.
+          22 signal predictors scoring locally. AI features connected via your server.
         </div>
       </div>
 
@@ -364,29 +364,33 @@ function StatusTab({ user, onSignOut }: { user: UserInfo; onSignOut: () => void 
 // ---------------------------------------------------------------------------
 function SettingsTab() {
   const [apiBase, setApiBase] = useState('');
+  const [anthropicKey, setAnthropicKey] = useState('');
+  const [showKey, setShowKey] = useState(false);
   const [saved, setSaved] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<'ok' | 'fail' | null>(null);
+  const [keyTestResult, setKeyTestResult] = useState<'ok' | 'fail' | null>(null);
 
   useEffect(() => {
     chrome.runtime.sendMessage({ type: 'GET_SETTINGS' }, (response) => {
       if (response?.apiBase) setApiBase(response.apiBase);
+      if (response?.anthropicKey) setAnthropicKey(response.anthropicKey);
     });
   }, []);
 
   const handleSave = () => {
-    const url = apiBase.trim().replace(/\/+$/, ''); // strip trailing slashes
-    chrome.runtime.sendMessage({ type: 'SET_SETTINGS', apiBase: url }, () => {
+    const url = apiBase.trim().replace(/\/+$/, '');
+    const key = anthropicKey.trim();
+    chrome.runtime.sendMessage({ type: 'SET_SETTINGS', apiBase: url, anthropicKey: key }, () => {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     });
   };
 
-  const handleTest = () => {
+  const handleTestServer = () => {
     setTesting(true);
     setTestResult(null);
     const url = apiBase.trim().replace(/\/+$/, '') || DEFAULT_API_BASE;
-    // Route through service worker to avoid CORS issues
     chrome.runtime.sendMessage(
       { type: 'API_REQUEST', endpoint: '/api/health', method: 'GET' },
       (response) => {
@@ -394,7 +398,6 @@ function SettingsTab() {
         if (response?.ok && response.data?.status === 'ok') {
           setTestResult('ok');
         } else {
-          // Fallback: try direct fetch (works for same-origin)
           fetch(`${url}/api/health`)
             .then(r => r.json())
             .then(d => setTestResult(d?.status === 'ok' ? 'ok' : 'fail'))
@@ -404,75 +407,158 @@ function SettingsTab() {
     );
   };
 
+  const handleTestKey = () => {
+    setKeyTestResult(null);
+    // Pass the currently-typed key explicitly so users can validate a new
+    // key before saving. Without this, the service worker would read the
+    // previously-saved key from chrome.storage and show "Invalid key" on
+    // first-time setup until the user clicked Save first.
+    chrome.runtime.sendMessage(
+      {
+        type: 'DIRECT_ANTHROPIC',
+        systemPrompt: 'Reply with exactly: ok',
+        userPrompt: 'ping',
+        maxTokens: 8,
+        apiKeyOverride: anthropicKey.trim() || undefined,
+      },
+      (response) => {
+        setKeyTestResult(response?.ok ? 'ok' : 'fail');
+      },
+    );
+  };
+
   const handleReset = () => {
     setApiBase(DEFAULT_API_BASE);
-    chrome.runtime.sendMessage({ type: 'SET_SETTINGS', apiBase: '' });
+    setAnthropicKey('');
+    chrome.runtime.sendMessage({ type: 'SET_SETTINGS', apiBase: '', anthropicKey: '' });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
 
+  const hasKey = anthropicKey.trim().length > 0;
+  const mode = hasKey ? 'byok' : 'local';
+
   return (
     <div style={{ padding: 16 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Server Settings</div>
-
-      <div style={{ fontSize: 11, color: '#666', marginBottom: 8, lineHeight: 1.5 }}>
-        BYOK: Deploy your own API server and point ReachOS to it. Leave empty to use the default hosted instance.
+      {/* Mode indicator */}
+      <div style={{
+        background: mode === 'byok' ? '#e6f9f0' : '#fff8e6',
+        border: `1px solid ${mode === 'byok' ? '#00ba7c' : '#ffd400'}`,
+        borderRadius: 8, padding: 8, marginBottom: 12,
+      }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: mode === 'byok' ? '#00754d' : '#8a6d00' }}>
+          {mode === 'byok' ? 'AI Enabled (Your Key)' : 'Local Only (22 Signals)'}
+        </div>
+        <div style={{ fontSize: 10, color: mode === 'byok' ? '#00754d' : '#8a6d00', lineHeight: 1.4 }}>
+          {mode === 'byok'
+            ? 'Auto-optimize, slop detection, and suggestions use your Anthropic key directly. No data sent to our servers.'
+            : 'Add your Anthropic API key below to unlock AI features. Your key stays in your browser.'}
+        </div>
       </div>
 
-      <label style={{ fontSize: 11, color: '#333', fontWeight: 600 }}>API Server URL</label>
-      <input
-        type="url"
-        value={apiBase}
-        onChange={(e) => setApiBase(e.target.value)}
-        placeholder={DEFAULT_API_BASE}
-        style={{
-          width: '100%',
-          padding: '8px 10px',
-          border: '1px solid #ddd',
-          borderRadius: 8,
-          fontSize: 12,
-          marginTop: 4,
-          marginBottom: 8,
-          boxSizing: 'border-box',
-        }}
-      />
-
-      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+      {/* Anthropic API Key (primary BYOK) */}
+      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Your API Key</div>
+      <div style={{ fontSize: 10, color: '#666', marginBottom: 6, lineHeight: 1.4 }}>
+        Get your key from console.anthropic.com. Stored locally in your browser only.
+      </div>
+      <div style={{ position: 'relative', marginBottom: 6 }}>
+        <input
+          type={showKey ? 'text' : 'password'}
+          value={anthropicKey}
+          onChange={(e) => setAnthropicKey(e.target.value)}
+          placeholder="sk-ant-..."
+          style={{
+            width: '100%',
+            padding: '8px 36px 8px 10px',
+            border: '1px solid #ddd',
+            borderRadius: 8,
+            fontSize: 12,
+            boxSizing: 'border-box',
+          }}
+        />
+        <button
+          onClick={() => setShowKey(!showKey)}
+          style={{
+            position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
+            background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#999',
+          }}
+        >
+          {showKey ? '\u{1F441}' : '\u{1F512}'}
+        </button>
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
         <button onClick={handleSave} style={{
-          flex: 1, padding: '8px 12px', background: '#1d9bf0', color: '#fff',
+          flex: 1, padding: '7px 12px', background: '#1d9bf0', color: '#fff',
           border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
         }}>
           {saved ? 'Saved!' : 'Save'}
         </button>
-        <button onClick={handleTest} disabled={testing} style={{
-          flex: 1, padding: '8px 12px', background: '#f5f5f5', color: '#333',
-          border: '1px solid #ddd', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-        }}>
-          {testing ? 'Testing...' : 'Test Connection'}
-        </button>
+        {hasKey && (
+          <button onClick={handleTestKey} style={{
+            flex: 1, padding: '7px 12px', background: '#f5f5f5', color: '#333',
+            border: '1px solid #ddd', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+          }}>
+            Test Key
+          </button>
+        )}
       </div>
+      {keyTestResult === 'ok' && (
+        <div style={{ background: '#e6f9f0', border: '1px solid #00ba7c', borderRadius: 8, padding: 6, fontSize: 10, color: '#00754d', marginBottom: 8 }}>
+          API key works.
+        </div>
+      )}
+      {keyTestResult === 'fail' && (
+        <div style={{ background: '#fee', border: '1px solid #fcc', borderRadius: 8, padding: 6, fontSize: 10, color: '#c00', marginBottom: 8 }}>
+          Invalid key or API error. Check your key at console.anthropic.com.
+        </div>
+      )}
 
-      {testResult === 'ok' && (
-        <div style={{ background: '#e6f9f0', border: '1px solid #00ba7c', borderRadius: 8, padding: 8, fontSize: 11, color: '#00754d', marginBottom: 8 }}>
-          Connected successfully.
+      {/* Server URL (advanced, optional) */}
+      <div style={{ marginTop: 12, borderTop: '1px solid #eee', paddingTop: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: '#666' }}>Advanced: Server URL</div>
+        <div style={{ fontSize: 10, color: '#999', marginBottom: 6, lineHeight: 1.4 }}>
+          Optional. Only needed if you self-host the API for account health tracking.
         </div>
-      )}
-      {testResult === 'fail' && (
-        <div style={{ background: '#fee', border: '1px solid #fcc', borderRadius: 8, padding: 8, fontSize: 11, color: '#c00', marginBottom: 8 }}>
-          Connection failed. Check the URL and make sure /api/health returns ok.
-        </div>
-      )}
+        <input
+          type="url"
+          value={apiBase}
+          onChange={(e) => setApiBase(e.target.value)}
+          placeholder={DEFAULT_API_BASE}
+          style={{
+            width: '100%',
+            padding: '6px 10px',
+            border: '1px solid #eee',
+            borderRadius: 8,
+            fontSize: 11,
+            marginBottom: 6,
+            boxSizing: 'border-box',
+            color: '#666',
+          }}
+        />
+        <button onClick={handleTestServer} disabled={testing} style={{
+          width: '100%', padding: '6px 12px', background: '#f5f5f5', color: '#666',
+          border: '1px solid #eee', borderRadius: 8, fontSize: 11, cursor: 'pointer',
+        }}>
+          {testing ? 'Testing...' : 'Test Server'}
+        </button>
+        {testResult === 'ok' && (
+          <div style={{ background: '#e6f9f0', border: '1px solid #00ba7c', borderRadius: 8, padding: 6, fontSize: 10, color: '#00754d', marginTop: 6 }}>
+            Server connected.
+          </div>
+        )}
+        {testResult === 'fail' && (
+          <div style={{ background: '#fee', border: '1px solid #fcc', borderRadius: 8, padding: 6, fontSize: 10, color: '#c00', marginTop: 6 }}>
+            Server connection failed.
+          </div>
+        )}
+      </div>
 
       <button onClick={handleReset} style={{
-        width: '100%', padding: '6px 12px', background: 'transparent', color: '#999',
+        width: '100%', padding: '6px 12px', marginTop: 12, background: 'transparent', color: '#999',
         border: '1px solid #eee', borderRadius: 8, fontSize: 11, cursor: 'pointer',
       }}>
-        Reset to default
+        Reset all settings
       </button>
-
-      <div style={{ marginTop: 16, borderTop: '1px solid #eee', paddingTop: 12, fontSize: 10, color: '#999', lineHeight: 1.5 }}>
-        Without a server, ReachOS still scores your tweets locally using 36 rules. AI features (slop detection, auto-optimize, suggestions) require a server with an Anthropic API key.
-      </div>
     </div>
   );
 }
@@ -622,10 +708,10 @@ export function Popup() {
             </div>
             <div style={{ fontSize: 11, color: '#555', lineHeight: 1.6 }}>
               {'\u2705'} Real-time Reach Score (0-100)<br/>
-              {'\u2705'} Breakdown: Hook, Structure, Engagement<br/>
+              {'\u2705'} 22-signal breakdown: Engagement, Curiosity, Dwell, Risk<br/>
               {'\u2705'} Reach Forecast with What-If Scenarios<br/>
               {'\u2705'} X-Ray Mode (score every tweet on timeline)<br/>
-              {'\u2705'} AI Slop Detection
+              {'\u{1F511}'} Add your Anthropic key in Settings for AI features
             </div>
           </div>
 

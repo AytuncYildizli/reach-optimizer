@@ -1,11 +1,21 @@
 const DEFAULT_API_BASE = "https://reach-optimizer.vercel.app";
 
-type MessageType = "GET_AUTH_TOKEN" | "SET_AUTH_TOKEN" | "API_REQUEST" | "UPDATE_BADGE" | "GET_SETTINGS" | "SET_SETTINGS";
+type MessageType =
+  | "GET_AUTH_TOKEN" | "SET_AUTH_TOKEN"
+  | "API_REQUEST" | "UPDATE_BADGE"
+  | "GET_SETTINGS" | "SET_SETTINGS"
+  | "DIRECT_ANTHROPIC";
 
 /** Read the user-configured API URL, falling back to default */
 async function getApiBase(): Promise<string> {
   const result = await chrome.storage.local.get("apiBase");
   return (result.apiBase as string) || DEFAULT_API_BASE;
+}
+
+/** Read the user's own Anthropic API key (true BYOK) */
+async function getAnthropicKey(): Promise<string | null> {
+  const result = await chrome.storage.local.get("anthropicKey");
+  return (result.anthropicKey as string) || null;
 }
 
 interface Message {
@@ -14,6 +24,15 @@ interface Message {
   endpoint?: string;
   method?: string;
   body?: unknown;
+  // DIRECT_ANTHROPIC fields
+  systemPrompt?: string;
+  userPrompt?: string;
+  model?: string;
+  maxTokens?: number;
+  temperature?: number;
+  /** Override the stored Anthropic key (used by Settings "Test Key" so users
+   * can validate a newly-typed key before saving it). */
+  apiKeyOverride?: string;
 }
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -63,24 +82,80 @@ chrome.runtime.onMessage.addListener(
       }
 
       case "GET_SETTINGS":
-        chrome.storage.local.get(["apiBase"], (result) => {
-          sendResponse({ apiBase: result.apiBase || DEFAULT_API_BASE });
+        chrome.storage.local.get(["apiBase", "anthropicKey"], (result) => {
+          sendResponse({
+            apiBase: result.apiBase || DEFAULT_API_BASE,
+            anthropicKey: result.anthropicKey || "",
+          });
         });
         return true;
 
       case "SET_SETTINGS": {
-        const apiBase = (message as { type: string; apiBase: string }).apiBase;
-        chrome.storage.local.set({ apiBase: apiBase || "" }, () => {
+        const settings = message as { type: string; apiBase?: string; anthropicKey?: string };
+        const toStore: Record<string, string> = {};
+        if (settings.apiBase !== undefined) toStore.apiBase = settings.apiBase || "";
+        if (settings.anthropicKey !== undefined) toStore.anthropicKey = settings.anthropicKey || "";
+        chrome.storage.local.set(toStore, () => {
           sendResponse({ success: true });
         });
         return true;
       }
+
+      case "DIRECT_ANTHROPIC":
+        handleDirectAnthropic(message).then(sendResponse);
+        return true;
 
       default:
         sendResponse({ error: "Unknown message type" });
     }
   }
 );
+
+/**
+ * Call Anthropic API directly using the user's own API key (true BYOK).
+ * No server needed — runs entirely in the extension.
+ */
+async function handleDirectAnthropic(message: Message): Promise<unknown> {
+  // Prefer the explicit override (Settings "Test Key" passes the typed key
+  // here so users can validate before saving). Fall back to stored key.
+  const apiKey = message.apiKeyOverride?.trim() || (await getAnthropicKey());
+  if (!apiKey) {
+    return { ok: false, error: "No Anthropic API key configured. Add your key in Settings." };
+  }
+
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        // Required when calling from a browser-direct context (the extension
+        // service worker's chrome-extension:// origin counts as one).
+        // Without this opt-in, Anthropic rejects the CORS preflight.
+        "anthropic-dangerous-direct-browser-access": "true",
+      },
+      body: JSON.stringify({
+        model: message.model || "claude-haiku-4-5-20251001",
+        max_tokens: message.maxTokens || 1024,
+        temperature: message.temperature ?? 0.3,
+        system: message.systemPrompt || "",
+        messages: [{ role: "user", content: message.userPrompt || "" }],
+      }),
+    });
+
+    if (!response.ok) {
+      const errBody = await response.text();
+      return { ok: false, error: `Anthropic API ${response.status}: ${errBody.slice(0, 200)}` };
+    }
+
+    const data = await response.json();
+    const text = data.content?.[0]?.text ?? "";
+    return { ok: true, data: { text } };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+  }
+}
 
 async function handleApiRequest(
   endpoint: string,

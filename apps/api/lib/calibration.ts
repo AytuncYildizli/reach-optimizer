@@ -58,37 +58,33 @@ export interface CalibrationReport {
   };
 }
 
-// All known rule IDs with metadata
+// v4 calibration units: one entry per X-published signal. Calibration measures
+// lift per signal (e.g. "tweets where reply.score > 0 had +12 outcome lift").
+// We bucket by signal rather than per-subrule because sub-rule sample sizes
+// are too small for meaningful per-rule statistics at typical user volumes.
 const ALL_RULES: Array<{ id: string; name: string; category: string }> = [
-  { id: 'hook-generic-pattern', name: 'Generic Hook Pattern', category: 'hook' },
-  { id: 'hook-length-check', name: 'Hook Length Check', category: 'structure' },
-  { id: 'hook-number-data', name: 'Number/Data in Hook', category: 'hook' },
-  { id: 'hook-multi-sentence', name: 'Multi-Sentence Hook', category: 'hook' },
-  { id: 'hook-open-loop', name: 'Open Loop Hook', category: 'hook' },
-  { id: 'hook-contrarian-claim', name: 'Contrarian Claim', category: 'hook' },
-  { id: 'hook-story-opener', name: 'Story Opener', category: 'hook' },
-  { id: 'structure-char-length', name: 'Character Length', category: 'structure' },
-  { id: 'structure-thread-length', name: 'Thread Length', category: 'structure' },
-  { id: 'engagement-cta-presence', name: 'CTA Presence', category: 'engagement' },
-  { id: 'engagement-question-type', name: 'Question Type', category: 'engagement' },
-  { id: 'engagement-bookmark-value', name: 'Bookmark Value', category: 'engagement' },
-  { id: 'engagement-choice-question', name: 'Choice Question', category: 'engagement' },
-  { id: 'engagement-direct-address', name: 'Direct Address', category: 'engagement' },
-  { id: 'penalty-link-external', name: 'External Link', category: 'penalty' },
-  { id: 'penalty-engagement-bait', name: 'Engagement Bait', category: 'penalty' },
-  { id: 'penalty-text-wall', name: 'Text Wall', category: 'penalty' },
-  { id: 'penalty-hashtag-spam', name: 'Hashtag Spam', category: 'penalty' },
-  { id: 'penalty-emoji-spam', name: 'Emoji Spam', category: 'penalty' },
-  { id: 'penalty-dead-ending', name: 'Dead Ending', category: 'penalty' },
-  { id: 'penalty-combative-tone', name: 'Combative Tone', category: 'penalty' },
-  { id: 'penalty-ai-slop-words', name: 'AI Slop Words', category: 'penalty' },
-  { id: 'penalty-ai-slop-structure', name: 'AI Slop Structure', category: 'penalty' },
-  { id: 'penalty-stale-formula', name: 'Stale Formula', category: 'penalty' },
-  { id: 'penalty-hedging-opener', name: 'Hedging Opener', category: 'penalty' },
-  { id: 'penalty-grammar', name: 'Grammar Issues', category: 'penalty' },
-  { id: 'bonus-first-person', name: 'First-Person Voice', category: 'bonus' },
-  { id: 'bonus-specific-number', name: 'Specific Number', category: 'bonus' },
-  { id: 'bonus-media-present', name: 'Media Present', category: 'bonus' },
+  { id: 'favorite', name: 'Favorite (like-worthy)', category: 'engagement' },
+  { id: 'reply', name: 'Reply (king signal)', category: 'engagement' },
+  { id: 'retweet', name: 'Retweet (quotable)', category: 'engagement' },
+  { id: 'quote', name: 'Quote-tweet-worthy', category: 'engagement' },
+  { id: 'share', name: 'Broadcast share', category: 'engagement' },
+  { id: 'share_via_dm', name: 'DM-shareable', category: 'engagement' },
+  { id: 'share_via_copy_link', name: 'Copy-link shareable', category: 'engagement' },
+  { id: 'click', name: 'Click (link CTR)', category: 'engagement' },
+  { id: 'profile_click', name: 'Profile click (curiosity)', category: 'curiosity' },
+  { id: 'follow_author', name: 'Follow conversion', category: 'curiosity' },
+  { id: 'photo_expand', name: 'Photo expand', category: 'engagement' },
+  { id: 'vqv', name: 'Video quality view', category: 'engagement' },
+  { id: 'dwell', name: 'Dwell', category: 'dwell' },
+  { id: 'cont_dwell_time', name: 'Continued dwell', category: 'dwell' },
+  { id: 'cont_click_dwell_time', name: 'Post-click dwell', category: 'dwell' },
+  { id: 'quoted_click', name: 'Quoted-post click', category: 'engagement' },
+  { id: 'quoted_vqv', name: 'Quoted-post video view', category: 'engagement' },
+  { id: 'not_dwelled', name: 'Scroll-past risk', category: 'risk' },
+  { id: 'not_interested', name: 'Not interested risk', category: 'risk' },
+  { id: 'block_author', name: 'Block-author risk', category: 'risk' },
+  { id: 'mute_author', name: 'Mute-author risk', category: 'risk' },
+  { id: 'report', name: 'Report risk', category: 'risk' },
 ];
 
 // -- Core Functions --
@@ -304,22 +300,43 @@ async function analyzeRuleLift(
     const key = (analysis.contentText || '').substring(0, 60).trim().toLowerCase();
     if (!key) continue;
 
-    // Extract fired rule IDs from ruleResults or suggestions
+    // Extract fired rule IDs. v4 writes a signalScores object into ruleResults;
+    // older v3 rows have either an array of {ruleId, triggered} or a suggestions
+    // array. Handle all three shapes so calibration sees fired rules from any
+    // historical row.
     const firedRules = new Set<string>();
 
-    // Try ruleResults first (newer format)
-    const ruleResults = analysis.ruleResults as Array<{ ruleId?: string; triggered?: boolean }> | null;
+    const ruleResults = analysis.ruleResults as unknown;
+
     if (Array.isArray(ruleResults)) {
-      for (const r of ruleResults) {
+      // v3 array shape: [{ ruleId, triggered }, ...]
+      for (const r of ruleResults as Array<{ ruleId?: string; triggered?: boolean }>) {
         if (r.ruleId && r.triggered) firedRules.add(r.ruleId);
+      }
+    } else if (ruleResults && typeof ruleResults === 'object') {
+      // v4 signalScores object shape: { reply: { score, applicable, ... }, ... }
+      for (const [signalName, signalScore] of Object.entries(
+        ruleResults as Record<string, { score?: number; applicable?: boolean }>,
+      )) {
+        if (!signalScore || signalScore.applicable === false) continue;
+        if (typeof signalScore.score === 'number' && signalScore.score !== 0) {
+          firedRules.add(signalName);
+        }
       }
     }
 
-    // Also check suggestions (older format - suggestions only contain triggered rules)
+    // Consult suggestions ONLY for v3 ruleIds. In v3 the suggestions list
+    // contained exclusively triggered rules, so it doubles as a fired-rules
+    // fallback for older DB rows. In v4 it also carries low-score improvement
+    // nudges (e.g. `signal:reply` when reply.score === 0), so importing those
+    // would pollute calibration buckets with un-fired signals — leading to
+    // inverted lift estimates. v4 fired data already came from signalScores.
     const suggestions = analysis.suggestions as Array<{ ruleId?: string }> | null;
     if (Array.isArray(suggestions)) {
       for (const s of suggestions) {
-        if (s.ruleId) firedRules.add(s.ruleId);
+        if (!s.ruleId) continue;
+        if (s.ruleId.startsWith('signal:')) continue;
+        firedRules.add(s.ruleId);
       }
     }
 

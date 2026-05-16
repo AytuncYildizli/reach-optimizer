@@ -3,10 +3,21 @@
  * Injects a small score pill on each tweet showing its Reach Score.
  */
 
-import { ScoreEngine, allClientRules } from "@reach/rules-engine";
+import { ScoreEngine } from "@reach/rules-engine";
 import type { TweetInput } from "@reach/shared-types";
 
-const engine = new ScoreEngine(allClientRules);
+const engine = new ScoreEngine();
+
+// Mirrors weights.json bands. Inlined here (and in index.tsx + analyze route)
+// so the timeline pill doesn't need to import the full rules-engine just to
+// pick a tier color for a locked score. v4.1 candidate: move to a shared util.
+function tierForScore(score: number): string {
+  if (score >= 80) return 'perfect';
+  if (score >= 61) return 'excellent';
+  if (score >= 41) return 'good';
+  if (score >= 21) return 'below_average';
+  return 'critical';
+}
 
 // Track which tweet elements we've already injected pills into
 const scoredTweets = new WeakSet<HTMLElement>();
@@ -17,14 +28,29 @@ const scoreCache = new Map<string, { score: number; tier: string }>();
 // Posted tweet scores — frozen at post time from the overlay (source of truth)
 const postedScores = new Map<string, number>();
 
+/** Normalize text for fuzzy matching between composer and DOM */
+function normalizeForMatch(text: string): string {
+  return text
+    .trim()
+    .replace(/\s+/g, ' ')          // collapse whitespace
+    .replace(/https?:\/\/\S+/g, '') // strip URLs (X shortens to t.co)
+    .replace(/[\u200B-\u200D\uFEFF]/g, '') // strip zero-width chars
+    .trim();
+}
+
 /**
  * Called by post-tracker when user posts a tweet.
  * Locks the score so X-Ray shows the exact same number as the overlay.
  */
 export function lockPostedScore(text: string, score: number): void {
-  // Normalize: trim + collapse whitespace for matching against DOM extraction
-  const key = text.trim().replace(/\s+/g, ' ');
-  postedScores.set(key, score);
+  // Store both exact and normalized keys for robust matching
+  const exact = text.trim().replace(/\s+/g, ' ');
+  const normalized = normalizeForMatch(text);
+  postedScores.set(exact, score);
+  if (normalized !== exact) {
+    postedScores.set(normalized, score);
+  }
+  console.log("[ReachOS] Score locked for post:", { score, textLen: text.length });
 }
 
 // X-Ray tiers aligned with v3.0 weights (baseScore 30, wider distribution)
@@ -56,15 +82,26 @@ function extractTweetText(tweetEl: HTMLElement): string | null {
 }
 
 /**
- * Check if a tweet has media (image/video/gif).
+ * Detect media kind on a timeline tweet. Video is checked first because
+ * videoComponent / <video> are the most discriminating signals; default to
+ * image otherwise. Returns { hasMedia, mediaType } so v4's photo_expand vs
+ * vqv distinction applies on the timeline (was previously collapsed to image
+ * for every media tweet, hiding vqv on videos).
  */
-function tweetHasMedia(tweetEl: HTMLElement): boolean {
-  return !!(
+function tweetMedia(tweetEl: HTMLElement): {
+  hasMedia: boolean;
+  mediaType: TweetInput['mediaType'];
+} {
+  if (tweetEl.querySelector('[data-testid="videoComponent"]') || tweetEl.querySelector('video')) {
+    return { hasMedia: true, mediaType: 'video' };
+  }
+  if (
     tweetEl.querySelector('[data-testid="tweetPhoto"]') ||
-    tweetEl.querySelector('[data-testid="videoComponent"]') ||
-    tweetEl.querySelector('[data-testid="tweetMediaImage"]') ||
-    tweetEl.querySelector('video')
-  );
+    tweetEl.querySelector('[data-testid="tweetMediaImage"]')
+  ) {
+    return { hasMedia: true, mediaType: 'image' };
+  }
+  return { hasMedia: false, mediaType: undefined };
 }
 
 /**
@@ -144,30 +181,39 @@ function scoreTweet(tweetEl: HTMLElement): void {
   if (!text) return;
 
   // Check if this tweet was posted by the user — use the frozen overlay score
-  const normalizedText = text.trim().replace(/\s+/g, ' ');
-  const locked = postedScores.get(normalizedText);
+  const exactKey = text.trim().replace(/\s+/g, ' ');
+  const normalizedKey = normalizeForMatch(text);
+  const locked = postedScores.get(exactKey) ?? postedScores.get(normalizedKey);
 
-  let result;
+  let score: number;
+  let tier: string;
   if (locked !== undefined) {
-    const tier = engine.evaluate({ text, platform: 'x', isThread: false, hasMedia: false }).tier;
-    result = { reachScore: locked, tier, breakdown: {} as never, suggestions: [] as never[] };
+    score = locked;
+    // Derive tier from the locked score, NOT from a fresh text-only evaluate.
+    // The locked score includes the overlay's server/BYOK deltas; a text-only
+    // engine.evaluate() would lose that and could land in a different tier
+    // band (e.g. show "good" color for a server-boosted 66).
+    tier = tierForScore(locked);
   } else {
-    const hasMedia = tweetHasMedia(tweetEl);
-    const cacheKey = text + (hasMedia ? '|M' : '|T');
+    const { hasMedia, mediaType } = tweetMedia(tweetEl);
+    const cacheKey = text + '|' + (mediaType ?? 'T');
 
-    // Use cached score if available — guarantees deterministic scoring
     const cached = scoreCache.get(cacheKey);
     if (cached) {
-      result = { reachScore: cached.score, tier: cached.tier, breakdown: {} as never, suggestions: [] as never[] };
+      score = cached.score;
+      tier = cached.tier;
     } else {
       const input: TweetInput = {
         text,
         platform: "x",
         isThread: false,
         hasMedia,
+        mediaType,
       };
-      result = engine.evaluate(input);
-      scoreCache.set(cacheKey, { score: result.reachScore, tier: result.tier });
+      const evaluated = engine.evaluate(input);
+      score = evaluated.score;
+      tier = evaluated.tier;
+      scoreCache.set(cacheKey, { score, tier });
     }
   }
 
@@ -181,7 +227,7 @@ function scoreTweet(tweetEl: HTMLElement): void {
   // Don't add duplicate pills
   if (actionBar.querySelector("[data-reachos-xray]")) return;
 
-  const pill = createScorePill(result.reachScore, result.tier);
+  const pill = createScorePill(score, tier);
   pill.style.display = "inline-flex";
   pill.style.alignItems = "center";
   pill.style.marginLeft = "auto";
@@ -191,7 +237,7 @@ function scoreTweet(tweetEl: HTMLElement): void {
     e.stopPropagation();
     e.preventDefault();
     console.log(
-      `[ReachOS X-Ray] Score: ${result.reachScore}/100 (${result.tier})`,
+      `[ReachOS X-Ray] Score: ${score}/100 (${tier})`,
       {
         text: text.substring(0, 80) + "...",
         locked: locked !== undefined,

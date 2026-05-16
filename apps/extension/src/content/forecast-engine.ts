@@ -16,9 +16,10 @@ interface ForecastInput {
   trackedTweetCount: number;
 }
 
-// Multiplier constants (research-backed from algorithm analysis)
-const MEDIA_MULTIPLIER = 1.38;       // Confirmed 2x Earlybird, real-world ~38% lift
-const LINK_PENALTY = 0.55;           // Confirmed 30-50% reach cut
+// Multiplier constants — recalibrated for xai-org/x-algorithm (May 2026)
+const IMAGE_MULTIPLIER = 1.35;       // photo_expand signal boost
+const VIDEO_MULTIPLIER = 1.45;       // vqv (video quality view) signal boost
+const CLICK_GAP_MULTIPLIER = 1.18;   // Curiosity gap before link boosts click signal
 const TRENDING_MULTIPLIER = 1.15;    // Trending alignment boost
 const PEAK_TIME_MULTIPLIER = 1.25;   // Peak posting time
 const GOOD_TIME_MULTIPLIER = 1.12;   // Good posting time
@@ -62,7 +63,7 @@ export function computeForecast(input: ForecastInput): ReachForecast {
 
   // 2. Content quality multiplier — score maps to reach impact
   // Score 50 = 1.0x (average), score 75 = 1.5x, score 25 = 0.5x
-  const contentMultiplier = analysis.reachScore / 50;
+  const contentMultiplier = analysis.score / 50;
 
   // 3. Timing multiplier
   const timeMultiplier = timingStatus === 'good_now'
@@ -75,11 +76,16 @@ export function computeForecast(input: ForecastInput): ReachForecast {
   const isTrending = analysis.trendingAlignment?.isAligned ?? false;
   const trendMultiplier = isTrending ? TRENDING_MULTIPLIER : 1.0;
 
-  // 5. Media multiplier
-  const mediaMultiplier = hasMedia ? MEDIA_MULTIPLIER : 1.0;
+  // 5. Media multiplier (split image/video — separate signals in v4)
+  const mediaMultiplier = hasMedia ? IMAGE_MULTIPLIER : 1.0;
 
-  // 6. Link penalty
-  const linkMultiplier = hasExternalLink ? LINK_PENALTY : 1.0;
+  // 6. Link multiplier — only applied when the user actually has a curiosity
+  //    gap framing the link. A bare link without the gap shouldn't get the
+  //    boost (and shouldn't get a penalty either — that's the v4 inversion).
+  //    Otherwise the "Add a curiosity gap" what-if scenario would compound
+  //    the same multiplier twice over.
+  const hasCuriosityGap = analysis.signalScores.click?.firedRules?.includes('curiosity_gap') ?? false;
+  const linkMultiplier = hasExternalLink && hasCuriosityGap ? CLICK_GAP_MULTIPLIER : 1.0;
 
   // 7. Account health multiplier
   const healthMultiplier = accountHealth?.reachMultiplier ?? 1.0;
@@ -104,41 +110,31 @@ export function computeForecast(input: ForecastInput): ReachForecast {
   // vs average ratio
   const vsAverage = baseReach > 0 ? predictedReach / baseReach : 1.0;
 
-  // Reply probability based on engagement signals
-  const hasQuestion = analysis.suggestions.some(
-    s => s.ruleId === 'engagement-cta-presence' && s.severity === 'positive',
-  );
-  const hasChoiceQuestion = analysis.suggestions.some(
-    s => s.ruleId === 'engagement-choice-question' && s.severity === 'positive',
-  );
-  let replyProbability = 25; // baseline
-  if (hasChoiceQuestion) replyProbability += 40;
-  else if (hasQuestion) replyProbability += 25;
-  if (analysis.reachScore >= 70) replyProbability += 15;
+  // Reply probability driven by the v4 reply signal (X's king positive signal).
+  const replySignal = analysis.signalScores.reply;
+  let replyProbability = 25;
+  if (replySignal && replySignal.score >= 8) replyProbability += 40;
+  else if (replySignal && replySignal.score >= 4) replyProbability += 25;
+  if (analysis.score >= 70) replyProbability += 15;
   if (isTrending) replyProbability += 10;
   replyProbability = Math.min(95, replyProbability);
 
-  // Bookmark probability based on content signals
-  const hasBookmarkValue = analysis.suggestions.some(
-    s => s.ruleId === 'engagement-bookmark-value' && s.severity === 'positive',
-  );
-  const hasListPromise = analysis.suggestions.some(
-    s => s.ruleId === 'hook-list-promise' && s.severity === 'positive',
-  );
-  let bookmarkProbability = 10; // baseline
-  if (hasBookmarkValue) bookmarkProbability += 30;
-  if (hasListPromise) bookmarkProbability += 15;
-  if (analysis.reachScore >= 75) bookmarkProbability += 10;
+  // Bookmark probability driven by share_via_copy_link + dm_share (save-and-share signals).
+  const copyLinkSignal = analysis.signalScores.share_via_copy_link;
+  const dmShareSignal = analysis.signalScores.share_via_dm;
+  let bookmarkProbability = 10;
+  if (copyLinkSignal && copyLinkSignal.score >= 3) bookmarkProbability += 30;
+  if (dmShareSignal && dmShareSignal.score >= 4) bookmarkProbability += 15;
+  if (analysis.score >= 75) bookmarkProbability += 10;
   bookmarkProbability = Math.min(85, bookmarkProbability);
 
-  // Viral breakout chance
-  let viralChance = 2; // baseline — most tweets don't go viral
-  if (analysis.reachScore >= 85) viralChance += 12;
-  else if (analysis.reachScore >= 75) viralChance += 6;
+  // Viral breakout chance — links no longer penalize viral chance in v4.
+  let viralChance = 2;
+  if (analysis.score >= 85) viralChance += 12;
+  else if (analysis.score >= 75) viralChance += 6;
   if (isTrending) viralChance += 8;
   if (timingStatus === 'good_now') viralChance += 4;
   if (hasMedia) viralChance += 3;
-  if (hasExternalLink) viralChance = Math.max(1, viralChance - 5);
   viralChance = Math.min(40, viralChance);
 
   // 8. Build what-if scenarios
@@ -168,41 +164,72 @@ function buildScenarios(
 ): WhatIfScenario[] {
   const scenarios: WhatIfScenario[] = [];
 
-  // Scenario: Remove external link (only if link exists)
+  // v4 scenario: Add a curiosity gap before the link (replaces the v3 "remove link" scenario).
+  //    Links are no longer penalized; framing them with curiosity drives the click signal.
   if (input.hasExternalLink) {
-    const withoutLink = recompute(input, { hasExternalLink: false });
-    scenarios.push({
-      id: 'remove-link',
-      label: 'Remove the link',
-      description: 'Move link to first reply',
-      icon: '\uD83D\uDD17',
-      predictedReach: withoutLink,
-      delta: withoutLink - currentPrediction,
-      deltaPercent: Math.round(((withoutLink - currentPrediction) / currentPrediction) * 100),
-      actionable: true,
-      alreadyApplied: false,
-    });
+    const clickSignal = input.analysis.signalScores.click;
+    const alreadyGap = !!clickSignal && clickSignal.firedRules.includes('curiosity_gap');
+    if (!alreadyGap) {
+      const withGap = Math.round(currentPrediction * CLICK_GAP_MULTIPLIER);
+      scenarios.push({
+        id: 'add-curiosity-gap',
+        label: 'Add a curiosity gap before the link',
+        description: '"Here\'s why \u2192" framing boosts the click signal',
+        icon: '\uD83D\uDD17',
+        predictedReach: withGap,
+        delta: withGap - currentPrediction,
+        deltaPercent: Math.round(((withGap - currentPrediction) / currentPrediction) * 100),
+        actionable: true,
+        alreadyApplied: false,
+      });
+    } else {
+      scenarios.push({
+        id: 'add-curiosity-gap',
+        label: 'Curiosity gap before link',
+        description: 'Click signal already active',
+        icon: '\u2705',
+        predictedReach: currentPrediction,
+        delta: 0,
+        deltaPercent: 0,
+        actionable: false,
+        alreadyApplied: true,
+      });
+    }
   }
 
-  // Scenario: Add media (only if no media)
+  // v4 scenario: Add an image (predicts photo_expand signal).
   if (!input.hasMedia) {
-    const withMedia = recompute(input, { hasMedia: true });
+    const withImage = Math.round(currentPrediction * IMAGE_MULTIPLIER);
     scenarios.push({
-      id: 'add-media',
+      id: 'add-image',
       label: 'Add an image',
-      description: 'Confirmed 2x algorithm boost',
+      description: 'Predicts photo_expand engagement',
       icon: '\uD83D\uDDBC\uFE0F',
-      predictedReach: withMedia,
-      delta: withMedia - currentPrediction,
-      deltaPercent: Math.round(((withMedia - currentPrediction) / currentPrediction) * 100),
+      predictedReach: withImage,
+      delta: withImage - currentPrediction,
+      deltaPercent: Math.round(((withImage - currentPrediction) / currentPrediction) * 100),
+      actionable: false,
+      alreadyApplied: false,
+    });
+
+    // v4 scenario: Add a video (predicts vqv signal).
+    const withVideo = Math.round(currentPrediction * VIDEO_MULTIPLIER);
+    scenarios.push({
+      id: 'add-video',
+      label: 'Add a video',
+      description: 'Predicts video quality view (vqv) signal',
+      icon: '\uD83C\uDFA5',
+      predictedReach: withVideo,
+      delta: withVideo - currentPrediction,
+      deltaPercent: Math.round(((withVideo - currentPrediction) / currentPrediction) * 100),
       actionable: false,
       alreadyApplied: false,
     });
   } else {
     scenarios.push({
-      id: 'add-media',
-      label: 'Image attached',
-      description: '+38% boost active',
+      id: 'add-image',
+      label: 'Media attached',
+      description: 'Visual engagement signal active',
       icon: '\u2705',
       predictedReach: currentPrediction,
       delta: 0,
@@ -256,14 +283,23 @@ function buildScenarios(
     });
   }
 
-  // Combined "best case" scenario — all improvements applied
+  // Combined "best case" scenario — all improvements applied.
+  // NOTE: in v4 the link is POSITIVE (CLICK_GAP_MULTIPLIER > 1), so the combined
+  // case keeps the user's existing link state — removing it would predict worse
+  // reach, not better. The composable improvements are media, timing, trending.
   const unapplied = scenarios.filter(s => !s.alreadyApplied);
   if (unapplied.length >= 2) {
     const bestCase = recompute(input, {
-      hasExternalLink: false,
       hasMedia: true,
+      // Pick the best-of-class media kind for the combined forecast so it
+      // doesn't undercount vs the standalone video scenario.
+      mediaKind: 'video',
       timingStatus: 'good_now',
       trending: true,
+      // Combined = apply every suggested improvement, so force the gap on.
+      // Without this, the combined row undercounts vs the standalone
+      // "Add a curiosity gap" row when the user has a bare link.
+      curiosityGap: true,
     });
     scenarios.push({
       id: 'combined',
@@ -289,8 +325,17 @@ function recompute(
   overrides: {
     hasExternalLink?: boolean;
     hasMedia?: boolean;
+    /** When the caller wants to model adding a specific media type (e.g. the
+     * combined scenario picks the best-of-class video over image), force the
+     * kind here. Defaults to image-shaped boost like the rest of the engine. */
+    mediaKind?: 'image' | 'video';
     timingStatus?: 'good_now' | 'better_later' | 'off_peak';
     trending?: boolean;
+    /** Force the curiosity-gap multiplier on/off regardless of whether the
+     * rule fires in the current draft. Used by the "Add a curiosity gap"
+     * and "Combined optimizations" scenarios so they aren't dependent on
+     * whether the user has already written the gap text. */
+    curiosityGap?: boolean;
   },
 ): number {
   const { analysis, accountHealth, avgViews, trackedTweetCount } = input;
@@ -299,6 +344,7 @@ function recompute(
   const hasExternalLink = overrides.hasExternalLink ?? input.hasExternalLink;
   const timingStatus = overrides.timingStatus ?? input.timingStatus;
   const isTrending = overrides.trending ?? (analysis.trendingAlignment?.isAligned ?? false);
+  const mediaKind = overrides.mediaKind ?? 'image';
 
   // Base reach
   let baseReach: number;
@@ -310,15 +356,26 @@ function recompute(
     baseReach = 200;
   }
 
-  const contentMultiplier = analysis.reachScore / 50;
+  const contentMultiplier = analysis.score / 50;
   const timeMultiplier = timingStatus === 'good_now'
     ? PEAK_TIME_MULTIPLIER
     : timingStatus === 'better_later'
       ? GOOD_TIME_MULTIPLIER
       : OFF_PEAK_MULTIPLIER;
   const trendMultiplier = isTrending ? TRENDING_MULTIPLIER : 1.0;
-  const mediaMultiplier = hasMedia ? MEDIA_MULTIPLIER : 1.0;
-  const linkMultiplier = hasExternalLink ? LINK_PENALTY : 1.0;
+  // Media multiplier respects the requested kind — combined-best-case picks
+  // video for the bigger lift, while the standalone add-image scenario
+  // stays image-shaped.
+  const mediaMultiplier = hasMedia
+    ? (mediaKind === 'video' ? VIDEO_MULTIPLIER : IMAGE_MULTIPLIER)
+    : 1.0;
+  // Same gap-gated logic as computeForecast, with an explicit override so
+  // the "Combined optimizations" scenario can force the gap on without
+  // having to mutate signalScores.
+  const hasCuriosityGap =
+    overrides.curiosityGap ??
+    (analysis.signalScores.click?.firedRules?.includes('curiosity_gap') ?? false);
+  const linkMultiplier = hasExternalLink && hasCuriosityGap ? CLICK_GAP_MULTIPLIER : 1.0;
   const healthMultiplier = accountHealth?.reachMultiplier ?? 1.0;
   const calibrationFactor = accountHealth?.forecastCorrectionFactor ?? 1.0;
 
