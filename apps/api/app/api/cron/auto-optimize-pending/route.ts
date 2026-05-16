@@ -64,16 +64,21 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // Detect hook type from suggestions
+      // Detect hook type from v4 signals. v3 used rule IDs like
+      // 'hook-generic-pattern'; v4 emits 'signal:<name>'. Bucket by the
+      // strongest fired positive signal — the one driving the most points
+      // is a more honest "hook type" label than the legacy regex match.
       const finalResult = engine.evaluate({
         text: bestText,
         platform: 'x',
         isThread: false,
         hasMedia: false,
       });
-      const hookSuggestion = finalResult.suggestions.find((s) => s.ruleId.includes('hook'));
-      if (hookSuggestion) {
-        hookType = hookSuggestion.ruleId.replace('hook-', '').replace('penalty-', '');
+      const topSignal = Object.values(finalResult.signalScores)
+        .filter((s) => s.applicable && s.type === 'positive' && s.score > 0)
+        .sort((a, b) => b.score - a.score)[0];
+      if (topSignal) {
+        hookType = topSignal.signal;
       }
 
       // 4. Update DB - write optimized text + score + hook type

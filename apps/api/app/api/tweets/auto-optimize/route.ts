@@ -27,9 +27,12 @@ export async function POST(request: NextRequest) {
   const originalText = body.content as string;
   const maxRounds = Math.min(body.maxRounds || 5, 5);
   // Optional composer context — when present we score original + variations
-  // with the same media state the client saw, so deltas line up.
+  // with the same media + quote state the client saw, so deltas line up and
+  // v4 signals (vqv, quoted_click, quoted_vqv) apply consistently.
   const hasMedia = body.hasMedia === true;
   const mediaType = body.mediaType as 'image' | 'video' | 'gif' | 'poll' | undefined;
+  const isQuoteTweet = body.isQuoteTweet === true;
+  const quotedMediaType = body.quotedMediaType as 'image' | 'video' | 'gif' | 'poll' | undefined;
 
   if (!originalText || originalText.length < 10) {
     return NextResponse.json({ success: false, error: 'Content too short' }, { status: 400 });
@@ -53,7 +56,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Score original
-  const originalResult = engine.evaluate({ text: originalText, platform: 'x', isThread: false, hasMedia, mediaType });
+  const originalResult = engine.evaluate({ text: originalText, platform: 'x', isThread: false, hasMedia, mediaType, isQuoteTweet, quotedMediaType });
   const originalScore = originalResult.score;
 
   let currentBest = originalText;
@@ -66,9 +69,9 @@ export async function POST(request: NextRequest) {
     const variations = await generateVariations(env.ANTHROPIC_API_KEY, currentBest, round, originalText);
     totalGenerated += variations.length;
 
-    // Score each variation with the same media context as the original.
+    // Score each variation with the same media + quote context as the original.
     const scored = variations.map(text => {
-      const result = engine.evaluate({ text, platform: 'x', isThread: false, hasMedia, mediaType });
+      const result = engine.evaluate({ text, platform: 'x', isThread: false, hasMedia, mediaType, isQuoteTweet, quotedMediaType });
       return { text, score: result.score };
     });
 

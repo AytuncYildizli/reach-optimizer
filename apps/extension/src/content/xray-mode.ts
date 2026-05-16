@@ -82,15 +82,26 @@ function extractTweetText(tweetEl: HTMLElement): string | null {
 }
 
 /**
- * Check if a tweet has media (image/video/gif).
+ * Detect media kind on a timeline tweet. Video is checked first because
+ * videoComponent / <video> are the most discriminating signals; default to
+ * image otherwise. Returns { hasMedia, mediaType } so v4's photo_expand vs
+ * vqv distinction applies on the timeline (was previously collapsed to image
+ * for every media tweet, hiding vqv on videos).
  */
-function tweetHasMedia(tweetEl: HTMLElement): boolean {
-  return !!(
+function tweetMedia(tweetEl: HTMLElement): {
+  hasMedia: boolean;
+  mediaType: TweetInput['mediaType'];
+} {
+  if (tweetEl.querySelector('[data-testid="videoComponent"]') || tweetEl.querySelector('video')) {
+    return { hasMedia: true, mediaType: 'video' };
+  }
+  if (
     tweetEl.querySelector('[data-testid="tweetPhoto"]') ||
-    tweetEl.querySelector('[data-testid="videoComponent"]') ||
-    tweetEl.querySelector('[data-testid="tweetMediaImage"]') ||
-    tweetEl.querySelector('video')
-  );
+    tweetEl.querySelector('[data-testid="tweetMediaImage"]')
+  ) {
+    return { hasMedia: true, mediaType: 'image' };
+  }
+  return { hasMedia: false, mediaType: undefined };
 }
 
 /**
@@ -184,8 +195,8 @@ function scoreTweet(tweetEl: HTMLElement): void {
     // band (e.g. show "good" color for a server-boosted 66).
     tier = tierForScore(locked);
   } else {
-    const hasMedia = tweetHasMedia(tweetEl);
-    const cacheKey = text + (hasMedia ? '|M' : '|T');
+    const { hasMedia, mediaType } = tweetMedia(tweetEl);
+    const cacheKey = text + '|' + (mediaType ?? 'T');
 
     const cached = scoreCache.get(cacheKey);
     if (cached) {
@@ -197,6 +208,7 @@ function scoreTweet(tweetEl: HTMLElement): void {
         platform: "x",
         isThread: false,
         hasMedia,
+        mediaType,
       };
       const evaluated = engine.evaluate(input);
       score = evaluated.score;

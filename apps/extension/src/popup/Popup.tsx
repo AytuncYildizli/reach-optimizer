@@ -339,7 +339,7 @@ function StatusTab({ user, onSignOut }: { user: UserInfo; onSignOut: () => void 
       <div style={{ background: '#e6f9f0', borderRadius: 10, padding: 12, marginBottom: 12, border: '1px solid #00ba7c' }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: '#00754d', marginBottom: 4 }}>Active</div>
         <div style={{ fontSize: 11, color: '#00754d', lineHeight: 1.5 }}>
-          36 rules scoring locally. AI features connected via your server.
+          22 signal predictors scoring locally. AI features connected via your server.
         </div>
       </div>
 
@@ -447,7 +447,7 @@ function SettingsTab() {
         borderRadius: 8, padding: 8, marginBottom: 12,
       }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: mode === 'byok' ? '#00754d' : '#8a6d00' }}>
-          {mode === 'byok' ? 'AI Enabled (Your Key)' : 'Local Only (36 Rules)'}
+          {mode === 'byok' ? 'AI Enabled (Your Key)' : 'Local Only (22 Signals)'}
         </div>
         <div style={{ fontSize: 10, color: mode === 'byok' ? '#00754d' : '#8a6d00', lineHeight: 1.4 }}>
           {mode === 'byok'
@@ -708,7 +708,7 @@ export function Popup() {
             </div>
             <div style={{ fontSize: 11, color: '#555', lineHeight: 1.6 }}>
               {'\u2705'} Real-time Reach Score (0-100)<br/>
-              {'\u2705'} Breakdown: Hook, Structure, Engagement<br/>
+              {'\u2705'} 22-signal breakdown: Engagement, Curiosity, Dwell, Risk<br/>
               {'\u2705'} Reach Forecast with What-If Scenarios<br/>
               {'\u2705'} X-Ray Mode (score every tweet on timeline)<br/>
               {'\u{1F511}'} Add your Anthropic key in Settings for AI features

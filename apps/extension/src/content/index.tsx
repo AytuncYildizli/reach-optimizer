@@ -25,6 +25,8 @@ let setGlobalServerError: ((e: boolean) => void) | null = null;
 let setGlobalCurrentText: ((t: string) => void) | null = null;
 let setGlobalHasMedia: ((m: boolean) => void) | null = null;
 let setGlobalMediaType: ((t: 'image' | 'video' | 'gif' | 'poll' | undefined) => void) | null = null;
+let setGlobalIsQuoteTweet: ((q: boolean) => void) | null = null;
+let setGlobalQuotedMediaType: ((t: 'image' | 'video' | 'gif' | 'poll' | undefined) => void) | null = null;
 let setGlobalHasExternalLink: ((l: boolean) => void) | null = null;
 
 // ---------------------------------------------------------------------------
@@ -42,6 +44,9 @@ let latestScore = 0;
 let latestPredictedReach = 0;
 let latestHasMedia = false;
 let latestMediaType: 'image' | 'video' | 'gif' | 'poll' | undefined;
+let latestIsQuoteTweet = false;
+let latestQuotedText = '';
+let latestQuotedMediaType: 'image' | 'video' | 'gif' | 'poll' | undefined;
 
 /**
  * Merge server AI-enhanced results into the current client analysis.
@@ -205,6 +210,11 @@ function doServerRequest(text: string): void {
           hasMedia: latestHasMedia,
           mediaType: latestMediaType,
           isThread: false,
+          // Quote context — server engine needs these for quoted_click / quoted_vqv
+          // to apply consistently with what the client displayed.
+          isQuoteTweet: latestIsQuoteTweet,
+          quotedText: latestQuotedText,
+          quotedMediaType: latestQuotedMediaType,
         },
       },
       (response) => {
@@ -260,6 +270,8 @@ function ScorePanel() {
   const [currentText, setCurrentText] = useState("");
   const [hasMedia, setHasMedia] = useState(false);
   const [mediaType, setMediaType] = useState<'image' | 'video' | 'gif' | 'poll' | undefined>(undefined);
+  const [isQuoteTweet, setIsQuoteTweet] = useState(false);
+  const [quotedMediaType, setQuotedMediaType] = useState<'image' | 'video' | 'gif' | 'poll' | undefined>(undefined);
   const [hasExternalLink, setHasExternalLink] = useState(false);
 
   useEffect(() => {
@@ -269,6 +281,8 @@ function ScorePanel() {
     setGlobalCurrentText = setCurrentText;
     setGlobalHasMedia = setHasMedia;
     setGlobalMediaType = setMediaType;
+    setGlobalIsQuoteTweet = setIsQuoteTweet;
+    setGlobalQuotedMediaType = setQuotedMediaType;
     setGlobalHasExternalLink = setHasExternalLink;
     return () => {
       setGlobalAnalysis = null;
@@ -277,6 +291,8 @@ function ScorePanel() {
       setGlobalCurrentText = null;
       setGlobalHasMedia = null;
       setGlobalMediaType = null;
+      setGlobalIsQuoteTweet = null;
+      setGlobalQuotedMediaType = null;
       setGlobalHasExternalLink = null;
     };
   }, []);
@@ -289,6 +305,8 @@ function ScorePanel() {
       currentText={currentText}
       hasMedia={hasMedia}
       mediaType={mediaType}
+      isQuoteTweet={isQuoteTweet}
+      quotedMediaType={quotedMediaType}
       hasExternalLink={hasExternalLink}
     />
   );
@@ -491,6 +509,9 @@ function onComposerTextChange(_composerEl: HTMLElement, text: string): void {
   latestScore = result.score;
   latestHasMedia = hasMedia;
   latestMediaType = media.mediaType;
+  latestIsQuoteTweet = quote.isQuoteTweet;
+  latestQuotedText = quote.quotedText;
+  latestQuotedMediaType = quote.quotedMediaType;
 
   // Detect external links for forecast
   const hasExternalLink = /https?:\/\/(?!(?:x\.com|twitter\.com|t\.co|pic\.twitter\.com))/i.test(text);
@@ -506,6 +527,12 @@ function onComposerTextChange(_composerEl: HTMLElement, text: string): void {
   }
   if (setGlobalMediaType) {
     setGlobalMediaType(media.mediaType);
+  }
+  if (setGlobalIsQuoteTweet) {
+    setGlobalIsQuoteTweet(quote.isQuoteTweet);
+  }
+  if (setGlobalQuotedMediaType) {
+    setGlobalQuotedMediaType(quote.quotedMediaType);
   }
   if (setGlobalHasExternalLink) {
     setGlobalHasExternalLink(hasExternalLink);

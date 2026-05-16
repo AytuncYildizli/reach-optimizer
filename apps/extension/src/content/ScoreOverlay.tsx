@@ -11,7 +11,21 @@ const localEngine = new ScoreEngine();
 // AutoOptimizeSection — score-aware optimization with client-side scoring
 // Uses user's own Anthropic key (BYOK) or falls back to server.
 // ---------------------------------------------------------------------------
-function AutoOptimizeSection({ text, originalScore, hasMedia, mediaType }: { text: string; originalScore: number; hasMedia?: boolean; mediaType?: 'image' | 'video' | 'gif' | 'poll' }) {
+function AutoOptimizeSection({
+  text,
+  originalScore,
+  hasMedia,
+  mediaType,
+  isQuoteTweet,
+  quotedMediaType,
+}: {
+  text: string;
+  originalScore: number;
+  hasMedia?: boolean;
+  mediaType?: 'image' | 'video' | 'gif' | 'poll';
+  isQuoteTweet?: boolean;
+  quotedMediaType?: 'image' | 'video' | 'gif' | 'poll';
+}) {
   const [results, setResults] = useState<{ text: string; score: number }[]>([]);
   const [loading, setLoading] = useState(false);
   const [noKeyError, setNoKeyError] = useState(false);
@@ -30,7 +44,7 @@ function AutoOptimizeSection({ text, originalScore, hasMedia, mediaType }: { tex
     setAlreadyGood(false);
 
     // 1. Score original with correct context
-    const originalResult = localEngine.evaluate({ text, platform: 'x', isThread: false, hasMedia: !!hasMedia, mediaType });
+    const originalResult = localEngine.evaluate({ text, platform: 'x', isThread: false, hasMedia: !!hasMedia, mediaType, isQuoteTweet, quotedMediaType });
     const origScore = originalResult.score;
     setLocalBaseline(origScore);
 
@@ -103,12 +117,15 @@ Return JSON: {"suggestions": ["v1", "v2", "v3"]}`;
                 body: {
                   content: text,
                   maxRounds: 2,
-                  // Pass media context so the server scores original + variations
-                  // with the same hasMedia/mediaType state the client used.
-                  // Without this, a video-attached tweet's variants are scored
-                  // as text-only (or image-only) and miss the vqv signal.
+                  // Pass full composer context so server scores original +
+                  // variants with the same media/quote state the client used.
+                  // Otherwise variants miss vqv (video) or quoted_click/
+                  // quoted_vqv (quote tweets) and get filtered out as
+                  // "not better than original".
                   hasMedia: !!hasMedia,
                   mediaType: hasMedia ? (mediaType ?? 'image') : undefined,
+                  isQuoteTweet: !!isQuoteTweet,
+                  quotedMediaType,
                 } },
               (serverResponse) => {
                 setLoading(false);
@@ -148,7 +165,7 @@ Return JSON: {"suggestions": ["v1", "v2", "v3"]}`;
         // Score each variation CLIENT-SIDE with correct hasMedia context
         const scored = suggestions.map(s => ({
           text: s,
-          score: localEngine.evaluate({ text: s, platform: 'x', isThread: false, hasMedia: !!hasMedia, mediaType }).score,
+          score: localEngine.evaluate({ text: s, platform: 'x', isThread: false, hasMedia: !!hasMedia, mediaType, isQuoteTweet, quotedMediaType }).score,
         }));
 
         // ONLY show results that score HIGHER than original
@@ -962,10 +979,12 @@ interface ScoreOverlayProps {
   currentText?: string;
   hasMedia?: boolean;
   mediaType?: 'image' | 'video' | 'gif' | 'poll';
+  isQuoteTweet?: boolean;
+  quotedMediaType?: 'image' | 'video' | 'gif' | 'poll';
   hasExternalLink?: boolean;
 }
 
-export function ScoreOverlay({ analysis, isServerPending, serverError, currentText, hasMedia = false, mediaType, hasExternalLink = false }: ScoreOverlayProps) {
+export function ScoreOverlay({ analysis, isServerPending, serverError, currentText, hasMedia = false, mediaType, isQuoteTweet, quotedMediaType, hasExternalLink = false }: ScoreOverlayProps) {
   const [minimized, setMinimized] = useState(false);
   const [hidden, setHidden] = useState(false);
 
@@ -1036,7 +1055,7 @@ export function ScoreOverlay({ analysis, isServerPending, serverError, currentTe
             <SuggestionList suggestions={analysis.suggestions} />
             <ReplyCoachBanner />
             {currentText && (
-              <AutoOptimizeSection text={currentText} originalScore={analysis.score} hasMedia={hasMedia} mediaType={mediaType} />
+              <AutoOptimizeSection text={currentText} originalScore={analysis.score} hasMedia={hasMedia} mediaType={mediaType} isQuoteTweet={isQuoteTweet} quotedMediaType={quotedMediaType} />
             )}
             {currentText && (
               <SelfReplyGenerator text={currentText} />
