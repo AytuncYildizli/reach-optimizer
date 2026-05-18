@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildContext } from '../../context';
 import {
+  predictAdDisclosure,
   predictBlockAuthor,
   predictClick,
   predictContClickDwellTime,
@@ -12,6 +13,7 @@ import {
   predictNotDwelled,
   predictNotInterested,
   predictPhotoExpand,
+  predictPostFrequency,
   predictProfileClick,
   predictQuote,
   predictQuotedClick,
@@ -22,6 +24,7 @@ import {
   predictShare,
   predictShareViaCopyLink,
   predictShareViaDm,
+  predictTopicConsistency,
   predictVqv,
 } from '../../signals';
 import type { TweetInput } from '@reach/shared-types';
@@ -237,6 +240,83 @@ describe('negative signals', () => {
     );
     expect(spam.score).toBeLessThan(-3);
   });
+
+  it('ad_disclosure penalizes promo language without disclosure', () => {
+    const undisclosed = predictAdDisclosure(
+      ctx({ text: 'Use code TUNC10 for a discount on my favourite headphones — link in bio.' }),
+    );
+    expect(undisclosed.score).toBeLessThan(0);
+  });
+
+  it('ad_disclosure is silent when #ad is present', () => {
+    const disclosed = predictAdDisclosure(
+      ctx({ text: 'Use code TUNC10 for a discount — link in bio. #ad' }),
+    );
+    expect(disclosed.score).toBe(0);
+  });
+
+  it('ad_disclosure ignores non-promo posts', () => {
+    const clean = predictAdDisclosure(ctx({ text: 'Shipped a thing today. Took 3 hours.' }));
+    expect(clean.score).toBe(0);
+  });
+
+  it('ad_disclosure does NOT treat bare narrative "ads" as disclosure', () => {
+    // Regression: an earlier regex matched the word "ads" anywhere, letting
+    // promo+narrative posts silence the penalty by accident.
+    const sneaky = predictAdDisclosure(
+      ctx({ text: 'I had ads running last year. Use code DEAL10, link in bio.' }),
+    );
+    expect(sneaky.score).toBeLessThan(0);
+  });
+
+  it('ad_disclosure accepts parenthesised disclosure', () => {
+    const ok = predictAdDisclosure(
+      ctx({ text: 'Use code DEAL10 (sponsored) — link in bio.' }),
+    );
+    expect(ok.score).toBe(0);
+  });
+
+  it('post_frequency is inert when extension did not report a count', () => {
+    const r = predictPostFrequency(ctx({ text: 'just a post' }));
+    expect(r.applicable).toBe(false);
+    expect(r.score).toBe(0);
+  });
+
+  it('post_frequency does not penalise the first or second post', () => {
+    expect(predictPostFrequency(ctx({ text: 'first post', postsToday: 0 })).score).toBe(0);
+    expect(predictPostFrequency(ctx({ text: 'second post', postsToday: 1 })).score).toBe(0);
+  });
+
+  it('post_frequency escalates after the third post', () => {
+    const third = predictPostFrequency(ctx({ text: 'third post', postsToday: 2 }));
+    const fifth = predictPostFrequency(ctx({ text: 'fifth post', postsToday: 4 }));
+    expect(third.score).toBeLessThan(0);
+    expect(fifth.score).toBeLessThan(third.score);
+  });
+});
+
+describe('curiosity signals', () => {
+  it('topic_consistency is inert without recent topics', () => {
+    const r = predictTopicConsistency(ctx({ text: 'building reachOS today' }));
+    expect(r.applicable).toBe(false);
+  });
+
+  it('topic_consistency rewards microniche overlap', () => {
+    const drift = predictTopicConsistency(
+      ctx({
+        text: 'random thoughts about cooking pasta tonight',
+        recentTopics: ['typescript', 'extension', 'reach', 'algorithm'],
+      }),
+    );
+    const onBrand = predictTopicConsistency(
+      ctx({
+        text: 'shipping a TypeScript extension that scores the reach algorithm',
+        recentTopics: ['typescript', 'extension', 'reach', 'algorithm', 'scoring'],
+      }),
+    );
+    expect(onBrand.score).toBeGreaterThan(drift.score);
+    expect(onBrand.score).toBeGreaterThanOrEqual(3);
+  });
 });
 
 describe('signal contract', () => {
@@ -265,6 +345,9 @@ describe('signal contract', () => {
       predictBlockAuthor(c),
       predictMuteAuthor(c),
       predictReport(c),
+      predictAdDisclosure(c),
+      predictPostFrequency(c),
+      predictTopicConsistency(c),
     ];
     for (const s of all) {
       expect(s).toHaveProperty('signal');

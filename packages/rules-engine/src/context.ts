@@ -32,5 +32,9 @@ export function buildContext(input: TweetInput): PostContext {
     quotedHasVideo: input.quotedMediaType === 'video',
     charCount: text.length,
     lineCount: lines.length,
+    // `postsToday` is optional on the wire; -1 sentinel means "extension did
+    // not report it", which `post_frequency` reads as non-applicable.
+    postsToday: input.postsToday ?? -1,
+    recentTopics: input.recentTopics ?? [],
   };
 }

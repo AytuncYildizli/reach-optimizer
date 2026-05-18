@@ -12,6 +12,9 @@ export interface AnalyzeRequest {
   isQuoteTweet?: boolean;
   quotedText?: string;
   quotedMediaType?: 'image' | 'video' | 'gif' | 'poll';
+  /** Author's post count for today (UTC), reported by the extension's local
+   * counter. Drives the v4 `post_frequency` penalty. Omitted by older builds. */
+  postsToday?: number;
 }
 
 export interface AnalyzeResponse {

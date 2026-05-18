@@ -27,6 +27,9 @@ import { predictNotInterested } from './not-interested';
 import { predictBlockAuthor } from './block-author';
 import { predictMuteAuthor } from './mute-author';
 import { predictReport } from './report';
+import { predictAdDisclosure } from './ad-disclosure';
+import { predictPostFrequency } from './post-frequency';
+import { predictTopicConsistency } from './topic-consistency';
 
 export type SignalPredictor = (ctx: PostContext) => SignalScore;
 
@@ -48,11 +51,14 @@ export const signalPredictors: Record<SignalName, SignalPredictor> = {
   cont_click_dwell_time: predictContClickDwellTime,
   quoted_click: predictQuotedClick,
   quoted_vqv: predictQuotedVqv,
+  topic_consistency: predictTopicConsistency,
   not_dwelled: predictNotDwelled,
   not_interested: predictNotInterested,
   block_author: predictBlockAuthor,
   mute_author: predictMuteAuthor,
   report: predictReport,
+  ad_disclosure: predictAdDisclosure,
+  post_frequency: predictPostFrequency,
 };
 
 export function runAllSignals(ctx: PostContext): Record<SignalName, SignalScore> {
@@ -86,4 +92,7 @@ export {
   predictBlockAuthor,
   predictMuteAuthor,
   predictReport,
+  predictAdDisclosure,
+  predictPostFrequency,
+  predictTopicConsistency,
 };

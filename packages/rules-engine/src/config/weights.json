@@ -1,5 +1,5 @@
 {
-  "version": "4.0.0",
+  "version": "4.1.0",
   "baseScore": 30,
   "signals": {
     "favorite":              { "maxPoints":  7,  "type": "positive", "bucket": "engagement" },
@@ -13,17 +13,20 @@
     "profile_click":         { "maxPoints":  7,  "type": "positive", "bucket": "curiosity" },
     "follow_author":         { "maxPoints":  5,  "type": "positive", "bucket": "curiosity" },
     "photo_expand":          { "maxPoints":  4,  "type": "positive", "bucket": "engagement", "conditional": "hasImage" },
-    "vqv":                   { "maxPoints":  4,  "type": "positive", "bucket": "engagement", "conditional": "hasVideo" },
+    "vqv":                   { "maxPoints":  8,  "type": "positive", "bucket": "engagement", "conditional": "hasVideo" },
     "dwell":                 { "maxPoints":  8,  "type": "positive", "bucket": "dwell" },
     "cont_dwell_time":       { "maxPoints":  4,  "type": "positive", "bucket": "dwell" },
     "cont_click_dwell_time": { "maxPoints":  3,  "type": "positive", "bucket": "dwell", "conditional": "hasClickable" },
     "quoted_click":          { "maxPoints":  3,  "type": "positive", "bucket": "engagement", "conditional": "isQuoteTweet" },
-    "quoted_vqv":            { "maxPoints":  2,  "type": "positive", "bucket": "engagement", "conditional": "isQuoteTweet+hasVideo" },
+    "quoted_vqv":            { "maxPoints":  4,  "type": "positive", "bucket": "engagement", "conditional": "isQuoteTweet+hasVideo" },
+    "topic_consistency":     { "maxPoints":  5,  "type": "positive", "bucket": "curiosity", "conditional": "hasRecentTopics" },
     "not_dwelled":           { "maxPenalty": -12, "type": "negative", "bucket": "risk" },
     "not_interested":        { "maxPenalty":  -8, "type": "negative", "bucket": "risk" },
     "block_author":          { "maxPenalty":  -8, "type": "negative", "bucket": "risk" },
     "mute_author":           { "maxPenalty":  -7, "type": "negative", "bucket": "risk" },
-    "report":                { "maxPenalty": -15, "type": "negative", "bucket": "risk" }
+    "report":                { "maxPenalty": -15, "type": "negative", "bucket": "risk" },
+    "ad_disclosure":         { "maxPenalty": -10, "type": "negative", "bucket": "risk" },
+    "post_frequency":        { "maxPenalty":  -8, "type": "negative", "bucket": "risk", "conditional": "knowsPostsToday" }
   },
   "tiers": {
     "critical":      { "min": 0,  "max": 20, "label": "Don't Post" },

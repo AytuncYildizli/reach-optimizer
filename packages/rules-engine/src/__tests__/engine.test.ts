@@ -21,7 +21,7 @@ describe('ScoreEngine v4', () => {
     expect(r).not.toHaveProperty('breakdown');
   });
 
-  it('signalScores contains all 22 signals', () => {
+  it('signalScores contains all v4 signals', () => {
     const r = engine.evaluate({
       text: 'Normal tweet content.',
       platform: 'x',
@@ -96,8 +96,8 @@ describe('ScoreEngine v4', () => {
     expect(great.score).toBeGreaterThanOrEqual(50);
   });
 
-  it('weights.json has version 4.0.0', () => {
-    expect(weights.version).toBe('4.0.0');
+  it('weights.json is on a v4.x line with baseScore 30', () => {
+    expect(weights.version).toMatch(/^4\./);
     expect(weights.baseScore).toBe(30);
   });
 

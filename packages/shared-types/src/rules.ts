@@ -20,11 +20,14 @@ export const SIGNAL_NAMES = [
   'cont_click_dwell_time',
   'quoted_click',
   'quoted_vqv',
+  'topic_consistency',
   'not_dwelled',
   'not_interested',
   'block_author',
   'mute_author',
   'report',
+  'ad_disclosure',
+  'post_frequency',
 ] as const;
 
 export type SignalName = (typeof SIGNAL_NAMES)[number];
@@ -45,6 +48,12 @@ export interface TweetInput {
   /** Media type of the quoted post, when isQuoteTweet is true. Used by
    * `quoted_vqv` to gate on whether the quoted tweet has a video. */
   quotedMediaType?: 'image' | 'video' | 'gif' | 'poll';
+  /** Number of posts the author has already made today (UTC). Used by
+   * `post_frequency` to penalise timeline-spamming behaviour. */
+  postsToday?: number;
+  /** Recent post topics / keyword bags so the engine can reward microniche
+   * consistency. Each entry is a normalised keyword from a recent post. */
+  recentTopics?: string[];
 }
 
 export interface PostContext {
@@ -62,6 +71,11 @@ export interface PostContext {
   quotedHasVideo: boolean;
   charCount: number;
   lineCount: number;
+  /** Author's post count for today (0 means this is the first). */
+  postsToday: number;
+  /** Normalised keywords from the author's recent posts, used by
+   * `topic_consistency` for microniche detection. Empty if unknown. */
+  recentTopics: string[];
 }
 
 export interface SubRule {

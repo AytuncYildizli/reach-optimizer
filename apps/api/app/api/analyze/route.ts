@@ -121,6 +121,10 @@ export async function POST(request: NextRequest) {
     isQuoteTweet: body.isQuoteTweet,
     quotedText: body.quotedText,
     quotedMediaType: body.quotedMediaType,
+    // Forwarded by the extension so the server applies the same
+    // post_frequency penalty the client just displayed. Older clients
+    // that don't send it leave the signal non-applicable.
+    postsToday: typeof body.postsToday === 'number' ? body.postsToday : undefined,
   });
 
   const finalResult: AnalysisResult = {
