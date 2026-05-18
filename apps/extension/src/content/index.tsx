@@ -4,6 +4,7 @@ import { ScoreEngine } from "@reach/rules-engine";
 import type { AnalysisResult, ScoreTier, TweetInput } from "@reach/shared-types";
 import { ComposerDetector } from "./composer-detector";
 import { setupPostTracker } from "./post-tracker";
+import { getPostsToday, primePostsToday } from "./posts-today";
 import { setupReplyCoach } from "./reply-coach";
 import { setupXRayMode, lockPostedScore } from "./xray-mode";
 import { ScoreOverlay } from "./ScoreOverlay";
@@ -215,6 +216,9 @@ function doServerRequest(text: string): void {
           isQuoteTweet: latestIsQuoteTweet,
           quotedText: latestQuotedText,
           quotedMediaType: latestQuotedMediaType,
+          // postsToday lets the server apply the same post_frequency penalty
+          // the client just computed, so the persisted score matches.
+          postsToday: getPostsToday(),
         },
       },
       (response) => {
@@ -499,6 +503,7 @@ function onComposerTextChange(_composerEl: HTMLElement, text: string): void {
     isQuoteTweet: quote.isQuoteTweet,
     quotedText: quote.quotedText,
     quotedMediaType: quote.quotedMediaType,
+    postsToday: getPostsToday(),
   };
 
   const result = engine.evaluate(input);
@@ -567,6 +572,10 @@ function onComposerTextChange(_composerEl: HTMLElement, text: string): void {
 // ---------------------------------------------------------------------------
 function init(): void {
   mountOverlay();
+
+  // Prime the postsToday cache from chrome.storage.local so the first
+  // analyse() of the session already knows the day's count.
+  void primePostsToday();
 
   const detector = new ComposerDetector(onComposerTextChange);
   detector.start();

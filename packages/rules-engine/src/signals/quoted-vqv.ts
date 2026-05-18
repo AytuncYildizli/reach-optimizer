@@ -1,7 +1,7 @@
 import type { PostContext, SignalScore } from '@reach/shared-types';
 import { buildSignalScore } from './_helpers';
 
-export const QUOTED_VQV_MAX = 2;
+export const QUOTED_VQV_MAX = 4;
 
 export function predictQuotedVqv(ctx: PostContext): SignalScore {
   return buildSignalScore(ctx, {
@@ -14,6 +14,13 @@ export function predictQuotedVqv(ctx: PostContext): SignalScore {
     // server-side analyze route runs with only the composing text).
     applicable: ctx.isQuoteTweet && ctx.quotedHasVideo,
     rules: [
+      {
+        // Baseline credit — quoting a video post inherits part of X's
+        // video-first push even before clever commentary.
+        name: 'quoted_video_present',
+        weight: 2,
+        test: (c) => c.quotedHasVideo,
+      },
       {
         name: 'commentary_teases_video',
         weight: 2,

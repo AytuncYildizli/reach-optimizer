@@ -1,7 +1,7 @@
 import type { PostContext, SignalScore } from '@reach/shared-types';
 import { buildSignalScore } from './_helpers';
 
-export const VQV_MAX = 4;
+export const VQV_MAX = 8;
 
 export function predictVqv(ctx: PostContext): SignalScore {
   return buildSignalScore(ctx, {
@@ -11,6 +11,14 @@ export function predictVqv(ctx: PostContext): SignalScore {
     max: VQV_MAX,
     applicable: ctx.hasVideo,
     rules: [
+      {
+        // X has been explicit since 2024 that video gets distribution priority.
+        // Mirror that bias with a flat baseline credit so any video post
+        // starts ahead of an equivalent text-only post.
+        name: 'video_present',
+        weight: 4,
+        test: (c) => c.hasVideo,
+      },
       {
         name: 'video_caption_hook',
         weight: 2,

@@ -3,6 +3,8 @@
  * and sends tracking data (tweet text + ReachOS score) to the API.
  */
 
+import { incrementPostsToday } from './posts-today';
+
 export function setupPostTracker(
   getCurrentText: () => string,
   getCurrentScore: () => number,
@@ -23,6 +25,11 @@ export function setupPostTracker(
           const predictedReach = getPredictedReach();
 
           if (text && text.length > 5) {
+            // Bump the local "posts today" counter so the next analyse()
+            // request can apply the post_frequency penalty. Fire-and-forget;
+            // a failed storage write just means the next score is unaffected.
+            void incrementPostsToday();
+
             chrome.runtime.sendMessage({
               type: "API_REQUEST",
               endpoint: "/api/tweets/track",
