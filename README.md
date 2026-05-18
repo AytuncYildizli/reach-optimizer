@@ -62,9 +62,9 @@ Post tweet → Save prediction → Fetch real metrics (15min)
 
 ## How It Works
 
-### Scoring Engine (22 Signals)
+### Scoring Engine (25 Signals)
 
-ReachOS v4.0 mirrors the 22 signals scored by `home-mixer/scorers/ranking_scorer.rs` in `xai-org/x-algorithm`. Each signal has its own predictor file in [`packages/rules-engine/src/signals/`](packages/rules-engine/src/signals/) — and every signal name matches the Rust source exactly.
+ReachOS v4.1 mirrors the 22 signals scored by `home-mixer/scorers/ranking_scorer.rs` in `xai-org/x-algorithm`, plus 3 ReachOS-original predictors covering ad-disclosure, daily post-frequency decay, and microniche topical consistency. Each signal has its own predictor file in [`packages/rules-engine/src/signals/`](packages/rules-engine/src/signals/) — and every xAI signal name matches the Rust source exactly.
 
 | Bucket | Signals | What it predicts |
 |--------|---------|------------------|
