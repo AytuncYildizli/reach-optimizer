@@ -28,6 +28,15 @@ export const env = {
   get TWITTER_API_IO_KEY() {
     return process.env.TWITTER_API_IO_KEY ?? '';
   },
+  get TWITTER_TRENDS_PROVIDER() {
+    return process.env.TWITTER_TRENDS_PROVIDER ?? 'twitterapi_io';
+  },
+  get XQUIK_API_KEY() {
+    return process.env.XQUIK_API_KEY ?? '';
+  },
+  get XQUIK_API_BASE() {
+    return process.env.XQUIK_API_BASE ?? 'https://xquik.com/api/v1';
+  },
   get OPS_DATABASE_URL() {
     return process.env.OPS_DATABASE_URL ?? '';
   },
