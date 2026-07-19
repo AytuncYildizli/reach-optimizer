@@ -10,9 +10,27 @@ interface TrendingCache {
   woeid: number;
 }
 
-let trendingCache: TrendingCache | null = null;
+interface ProviderTrend {
+  name: string;
+  rank?: number;
+  tweet_volume?: number | null;
+}
 
-async function fetchTrendsFromTwitterApi(woeid = 1): Promise<TrendingTopic[]> {
+const trendingCaches = new Map<number, TrendingCache>();
+
+function normalizeTrend(
+  trend: ProviderTrend,
+  index: number,
+): TrendingTopic {
+  return {
+    name: trend.name,
+    keyword: trend.name.replace(/^#/, '').toLowerCase(),
+    rank: trend.rank ?? index + 1,
+    tweetVolume: trend.tweet_volume ?? null,
+  };
+}
+
+async function fetchTrendsFromTwitterApiIo(woeid = 1): Promise<TrendingTopic[]> {
   const apiKey = env.TWITTER_API_IO_KEY;
   if (!apiKey) return [];
   const url = new URL('https://api.twitterapi.io/twitter/trends');
@@ -20,20 +38,46 @@ async function fetchTrendsFromTwitterApi(woeid = 1): Promise<TrendingTopic[]> {
   const response = await fetch(url.toString(), { method: 'GET', headers: { 'X-API-Key': apiKey } });
   if (!response.ok) throw new Error(`twitterapi.io trends ${response.status}`);
   const data = await response.json();
-  const rawTrends: Array<{ name: string; query?: string; rank?: number; tweet_volume?: number | null }> = data.trends ?? data.data?.trends ?? [];
-  return rawTrends.map((t, i) => ({ name: t.name, keyword: t.name.replace(/^#/, '').toLowerCase(), rank: t.rank ?? i + 1, tweetVolume: t.tweet_volume ?? null }));
+  const rawTrends: ProviderTrend[] = data.trends ?? data.data?.trends ?? [];
+  return rawTrends.map(normalizeTrend);
+}
+
+async function fetchTrendsFromXquik(woeid = 1): Promise<TrendingTopic[]> {
+  const apiKey = env.XQUIK_API_KEY;
+  if (!apiKey) return [];
+  const url = new URL(`${env.XQUIK_API_BASE.replace(/\/$/, '')}/trends`);
+  url.searchParams.set('woeid', String(woeid));
+  url.searchParams.set('count', '30');
+  const response = await fetch(url.toString(), { method: 'GET', headers: { 'X-API-Key': apiKey } });
+  if (!response.ok) throw new Error(`Xquik trends ${response.status}`);
+  const data = await response.json();
+  const rawTrends: ProviderTrend[] = data.trends ?? [];
+  return rawTrends.map(normalizeTrend);
+}
+
+async function fetchTrends(woeid = 1): Promise<TrendingTopic[]> {
+  const provider = env.TWITTER_TRENDS_PROVIDER.trim().toLowerCase().replace('-', '_');
+  if (provider === 'xquik') {
+    return fetchTrendsFromXquik(woeid);
+  }
+
+  return fetchTrendsFromTwitterApiIo(woeid);
 }
 
 export async function getCachedTrends(woeid = 1): Promise<TrendingCache> {
   const now = Date.now();
-  if (trendingCache && (now - trendingCache.fetchedAt.getTime()) < CACHE_TTL_MS) return trendingCache;
+  const cached = trendingCaches.get(woeid);
+  if (cached && (now - cached.fetchedAt.getTime()) < CACHE_TTL_MS) {
+    return cached;
+  }
   try {
-    const trends = await fetchTrendsFromTwitterApi(woeid);
-    trendingCache = { trends, fetchedAt: new Date(), woeid };
-    return trendingCache;
+    const trends = await fetchTrends(woeid);
+    const refreshed = { trends, fetchedAt: new Date(), woeid };
+    trendingCaches.set(woeid, refreshed);
+    return refreshed;
   } catch (error) {
     console.error('[Trending] Fetch failed:', error);
-    if (trendingCache) return trendingCache;
+    if (cached) return cached;
     return { trends: [], fetchedAt: new Date(), woeid };
   }
 }
