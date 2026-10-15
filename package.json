@@ -13,8 +13,8 @@
     "deploy:preview": "npx turbo prune @reach/api --out-dir=./out && cp tsconfig.base.json out/ && echo 'shamefully-hoist=true\nnode-linker=hoisted\nenable-pre-post-scripts=true' > out/.npmrc && cd out && vercel deploy --yes"
   },
   "devDependencies": {
+    "next": "^15.5.28",
     "turbo": "^2.4.4",
-    "typescript": "^5.8.2",
-    "next": "^15.0.0"
+    "typescript": "^5.8.2"
   }
 }
