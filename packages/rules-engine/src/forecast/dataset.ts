@@ -20,7 +20,21 @@ export interface HistoryPost {
   replies: number;
   quotes: number;
   bookmarks: number;
+  /** Follower count dated to this post. A constant value is dropped at fit time. */
   followerCount: number | null;
+  /** Handle when the file labels accounts. Filename stem is applied by the CLI. */
+  account?: string | null;
+  authorId?: string | null;
+  quoted?: QuotedContext | null;
+}
+
+export interface QuotedContext {
+  impressions: number | null;
+  authorFollowers: number | null;
+  ageHours: number | null;
+  selfQuote: boolean;
+  /** True when a finite quoted impression count was present, including zero. */
+  metricsPresent: boolean;
 }
 
 export interface ModelRow {
@@ -39,6 +53,7 @@ export interface ModelRow {
   hasVideo: boolean;
   isQuote: boolean;
   lang: string;
+  account: string;
 }
 
 export interface PrepareOptions {
@@ -47,6 +62,13 @@ export interface PrepareOptions {
   minAgeDays: number;
   window: number;
   minHistory: number;
+  /**
+   * Add `q_rel_imp` = log(quoted impressions + 1) − log(baseline).
+   * Off by default. That count is taken at fetch time, after the quote, so the
+   * quote has already sent viewers to the quoted post. Live scoring must read
+   * it at compose time. The other quote features stay on: they are known then.
+   */
+  quotedImpressions?: boolean;
 }
 
 export interface PreparedDataset {
@@ -71,8 +93,14 @@ export function engagementRate(post: Pick<HistoryPost, 'likes' | 'retweets' | 'r
 }
 
 function num(value: unknown): number {
+  const n = optionalNum(value);
+  return n == null ? 0 : n;
+}
+
+function optionalNum(value: unknown): number | null {
+  if (value == null) return null;
   const n = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
-  return Number.isFinite(n) ? n : 0;
+  return Number.isFinite(n) ? n : null;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -123,7 +151,65 @@ function kindOf(raw: Record<string, unknown>): string {
   return 'original';
 }
 
-function parseOne(value: unknown): HistoryPost | null {
+function accountOf(raw: Record<string, unknown>): string | null {
+  const value = raw.account ?? raw.username ?? raw.author_username ?? raw.screen_name;
+  if (typeof value !== 'string') return null;
+  const name = value.trim().replace(/^@/, '');
+  return name.length > 0 ? name : null;
+}
+
+function followerCountOf(raw: Record<string, unknown>, createdAt: string): number | null {
+  const snaps = raw.follower_snapshots ?? raw.followerSnapshots;
+  if (Array.isArray(snaps)) {
+    const created = Date.parse(createdAt);
+    let best: { at: number; count: number } | null = null;
+    for (const item of snaps) {
+      const rec = asRecord(item);
+      if (!rec) continue;
+      const at = Date.parse(String(rec.at ?? rec.date ?? rec.created_at ?? ''));
+      const count = optionalNum(rec.followers ?? rec.follower_count ?? rec.followerCount ?? rec.count);
+      if (Number.isNaN(at) || count == null || at > created) continue;
+      if (!best || at >= best.at) best = { at, count };
+    }
+    if (best) return best.count;
+  }
+  const author = asRecord(raw.author);
+  const authorMetrics = author ? asRecord(author.public_metrics) : null;
+  return optionalNum(
+    raw.follower_count ??
+      raw.followerCount ??
+      raw.followers ??
+      raw.followers_count ??
+      authorMetrics?.followers_count,
+  );
+}
+
+function parseQuoted(raw: Record<string, unknown>, authorId: string | null, createdAt: string): QuotedContext | null {
+  const quoted = asRecord(raw.quoted);
+  const metrics = quoted ? asRecord(quoted.public_metrics) : null;
+  const impressions = optionalNum(metrics?.impression_count ?? raw.quoted_impressions);
+  const authorFollowers = optionalNum(quoted?.author_followers ?? raw.quoted_author_followers);
+  let ageHours = optionalNum(raw.quoted_post_age_at_quote_h);
+  if (ageHours == null && quoted && typeof quoted.created_at === 'string') {
+    const delta = Date.parse(createdAt) - Date.parse(quoted.created_at);
+    if (!Number.isNaN(delta)) ageHours = Math.max(0, delta / 36e5);
+  }
+  const quotedAuthor = quoted?.author_id != null ? String(quoted.author_id) : null;
+  const selfQuote =
+    typeof quoted?.is_self_quote === 'boolean'
+      ? quoted.is_self_quote
+      : !!(authorId && quotedAuthor && authorId === quotedAuthor);
+  if (!quoted && impressions == null && authorFollowers == null && ageHours == null) return null;
+  return {
+    impressions,
+    authorFollowers,
+    ageHours,
+    selfQuote,
+    metricsPresent: impressions != null,
+  };
+}
+
+function parseOne(value: unknown, fallbackAccount?: string): HistoryPost | null {
   const raw = asRecord(value);
   if (!raw) return null;
   const id = raw.id != null ? String(raw.id) : '';
@@ -146,8 +232,7 @@ function parseOne(value: unknown): HistoryPost | null {
   else if (raw.mediaType === 'image' || raw.mediaType === 'video' || raw.mediaType === 'gif') mediaType = raw.mediaType;
   else if (typeof raw.media === 'string' && raw.media !== 'none') mediaType = mapMedia([raw.media]);
 
-  const followerRaw = raw.follower_count ?? raw.followerCount ?? raw.followers;
-  const followerCount = followerRaw == null ? null : num(followerRaw);
+  const authorId = raw.author_id != null ? String(raw.author_id) : raw.authorId != null ? String(raw.authorId) : null;
 
   return {
     id,
@@ -162,18 +247,37 @@ function parseOne(value: unknown): HistoryPost | null {
     replies,
     quotes,
     bookmarks,
-    followerCount,
+    followerCount: followerCountOf(raw, createdAt),
+    account: accountOf(raw) ?? fallbackAccount ?? null,
+    authorId,
+    quoted: parseQuoted(raw, authorId, createdAt),
   };
 }
 
-export function parsePostsJson(data: unknown): HistoryPost[] {
+export function parsePostsJson(data: unknown, fallbackAccount?: string): HistoryPost[] {
   if (!Array.isArray(data)) throw new Error('Posts file must be a JSON array');
   const posts: HistoryPost[] = [];
   for (const item of data) {
-    const post = parseOne(item);
+    const post = parseOne(item, fallbackAccount);
     if (post) posts.push(post);
   }
   return posts;
+}
+
+export function postsByAccount(
+  posts: HistoryPost[],
+  fallback = 'account',
+): Array<{ account: string; posts: HistoryPost[] }> {
+  const map = new Map<string, HistoryPost[]>();
+  for (const post of posts) {
+    const account = post.account?.trim() || fallback;
+    const list = map.get(account) ?? [];
+    list.push(post);
+    map.set(account, list);
+  }
+  return [...map.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([account, grouped]) => ({ account, posts: grouped }));
 }
 
 function dedupeKey(text: string): string {
@@ -198,6 +302,9 @@ export function prepareDataset(posts: HistoryPost[], opts: PrepareOptions): Prep
   };
   const cutoff = opts.asOf.getTime() - opts.minAgeDays * 24 * 60 * 60 * 1000;
   const candidates: HistoryPost[] = [];
+  // Recency and topic context include posts that are too young to be targets.
+  // Their impressions are still moving, so they stay out of the rolling baseline.
+  const activity: HistoryPost[] = [];
 
   for (const post of posts) {
     if (post.kind === 'reply') {
@@ -213,15 +320,15 @@ export function prepareDataset(posts: HistoryPost[], opts: PrepareOptions): Prep
       dropped.short_text = (dropped.short_text ?? 0) + 1;
       continue;
     }
-    if (created >= cutoff) {
+    if (created > opts.asOf.getTime()) {
       dropped.too_recent = (dropped.too_recent ?? 0) + 1;
       continue;
     }
-    if (!(post.impressions > 0)) {
-      dropped.non_positive_impressions = (dropped.non_positive_impressions ?? 0) + 1;
-      continue;
-    }
-    candidates.push(post);
+    const mature = created < cutoff && post.impressions > 0;
+    if (created >= cutoff) dropped.too_recent = (dropped.too_recent ?? 0) + 1;
+    else if (!(post.impressions > 0)) dropped.non_positive_impressions = (dropped.non_positive_impressions ?? 0) + 1;
+    if (mature) candidates.push(post);
+    activity.push(post);
   }
 
   candidates.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id.localeCompare(b.id));
@@ -284,6 +391,8 @@ export function prepareDataset(posts: HistoryPost[], opts: PrepareOptions): Prep
       baselineImpressions,
       baselineEngagement,
       followerCount: post.followerCount,
+      quote: post.quoted ?? null,
+      quotedImpressions: opts.quotedImpressions ?? false,
     });
     rows.push({
       id: post.id,
@@ -309,11 +418,14 @@ export function prepareDataset(posts: HistoryPost[], opts: PrepareOptions): Prep
       hasVideo,
       isQuote,
       lang: post.lang,
+      account: post.account?.trim() || '',
     });
   }
 
+  activity.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id.localeCompare(b.id));
   const tail = eligible.slice(-opts.window);
-  const topicSource = eligible.slice(-10);
+  const topicSource = activity.slice(-10);
+  const latestActivity = activity[activity.length - 1];
   return {
     rows,
     eligible,
@@ -322,8 +434,8 @@ export function prepareDataset(posts: HistoryPost[], opts: PrepareOptions): Prep
     nextContext: {
       baselineImpressions: tail.length > 0 ? median(tail.map((p) => p.impressions)) : null,
       baselineEngagement: tail.length > 0 ? median(tail.map((p) => engagementRate(p))) : null,
-      latestPostAt: eligible.length > 0 ? eligible[eligible.length - 1]!.createdAt : null,
-      recentPostAts: eligible.slice(-40).map((p) => p.createdAt),
+      latestPostAt: latestActivity ? latestActivity.createdAt : null,
+      recentPostAts: activity.slice(-40).map((p) => p.createdAt),
       recentTopics: [...new Set(topicSource.flatMap((p) => topicTokens(p.text)))].slice(0, 40),
     },
   };

@@ -755,17 +755,41 @@ function ReachForecastPanel({ text, hasMedia, mediaType, isQuoteTweet }: {
   const [accountHealth, setAccountHealth] = useState<AccountHealth | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+    const fresh = (value: unknown): AccountHealth | null => {
+      if (!value || typeof value !== 'object') return null;
+      const data = value as AccountHealth;
+      const fetched = new Date(data.fetchedAt).getTime();
+      if (Number.isNaN(fetched)) return null;
+      const age = Date.now() - fetched;
+      return age >= 0 && age < 3600000 ? data : null;
+    };
+    const onChanged = (changes: { [key: string]: chrome.storage.StorageChange }, area: string) => {
+      if (cancelled || area !== 'local' || !changes.accountHealth) return;
+      setAccountHealth(fresh(changes.accountHealth.newValue));
+    };
     try {
+      chrome.storage.onChanged.addListener(onChanged);
       chrome.storage.local.get(['accountHealth'], (result) => {
-        if (result.accountHealth) {
-          const data = result.accountHealth as AccountHealth;
-          const age = Date.now() - new Date(data.fetchedAt).getTime();
-          if (age < 3600000) {
-            setAccountHealth(data);
-          }
+        const cached = fresh(result.accountHealth);
+        if (cached) {
+          if (!cancelled) setAccountHealth(cached);
+          return;
         }
+        chrome.runtime.sendMessage(
+          { type: 'API_REQUEST', endpoint: '/api/account-health', method: 'GET' },
+          (response) => {
+            if (cancelled || !response?.ok || !response.data?.success || !response.data.data) return;
+            chrome.storage.local.set({ accountHealth: response.data.data });
+            setAccountHealth(fresh(response.data.data));
+          },
+        );
       });
     } catch { /* extension context */ }
+    return () => {
+      cancelled = true;
+      try { chrome.storage.onChanged.removeListener(onChanged); } catch { /* extension context */ }
+    };
   }, []);
 
   useEffect(() => {

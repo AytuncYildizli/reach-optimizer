@@ -102,20 +102,33 @@ The checklist score is not a reach prediction. A number is a separate model, and
 
 The forecast fits a ridge regression per account:
 
-- Features: the 25 signal scores, plus length, line breaks, numbers, links, media, quote vs original, language, hour and weekday in the account's timezone, recency, and the account's past rolling median impressions.
+- Features: the 25 signal scores, plus length, line breaks, numbers, links (`has_link` and link count), media, quote vs original, language, hour and weekday in the account's timezone, recency, and the account's past rolling median impressions.
+- Quote features, known at compose time: `q_present`, `log1p(quoted author followers)`, `log1p(quoted post age in hours)`, and `q_self` (a self-quote). Parsed from `quoted` plus `quoted_author_followers` and `quoted_post_age_at_quote_h`.
+- `q_rel_imp` = `log(quoted impressions + 1) − log(baseline)` is **off** unless you pass `--quoted-impressions`. That count is measured at fetch time, after the quote exists, so the quote has already added views. It is partly leaky. A live model may use it only from a count read at compose time.
+- `follower_count` / `followerCount` / `followers`, or `follower_snapshots: [{ at, followers }]`, is the follower count dated to that post. A count that does not vary inside the account is dropped. A single current follower total copied onto every post is not a feature.
 - Impression target: `log(impressions / rolling median of earlier posts)`.
 - Engagement target: engagement rate minus its own rolling median. Rate is `(likes + reposts + replies + quotes) / impressions`.
 - Split: train on older posts, test on newer posts. Rolling baselines use only earlier posts.
-- A number is shown only when the holdout has at least 40 training posts and 20 test posts, Spearman is positive and above the rolling median, and MAE is at least 5% lower. The UI then shows an 80% interval, not a single exact count.
+- A number is shown only when the holdout has at least 40 training posts and 20 test posts, Spearman is positive and above the rolling median, and **raw MAE** is at least 5% lower. The UI then shows an 80% interval, not a single exact count.
+- log-MAE and median absolute error are printed beside that result. They do **not** decide the impression gate. The 5% raw-MAE bar was fixed before these files were scored and is unchanged.
 - Otherwise the forecast is **uncalibrated**. What-if multipliers (image ×1.35, and the rest of the old chain) are not shown.
 
-Re-run it when more posts arrive:
+Pooled mode fits one ridge on several accounts. Each account still gets its own rolling baseline and its own 70/30 time split. The sorted-first account is the intercept; the others get a one-hot column. Pass more than one JSON file, or put an `account` field on each post. One account makes the dummy a constant, so the pooled fit matches the per-account fit. A pooled fit is not what the extension ships. The live number still requires that account's own raw-MAE gate.
 
 ```bash
 pnpm --filter @reach/rules-engine backtest -- posts.json --timezone Europe/Istanbul --as-of 2026-10-27T00:00:00.000Z
+pnpm --filter @reach/rules-engine backtest -- a.json b.json --pooled --timezone Europe/Istanbul --quoted-impressions
 ```
 
-`posts.json` is an array of posts with `public_metrics` (the X API post shape). Replies, posts younger than 3 days, captions with no scorable text, and duplicate captions are dropped. The daily calibrate cron fits this same model for tracked tweets and stores it on the user. The extension reads that snapshot; with no passing model it shows the checklist only.
+Early-engagement mode reads rows shaped like a `metric_snapshots` export: `{ id | post_id, age_h: 1|6|24|48|168 | target: "1h"|"6h"|"24h"|"48h"|"7d", metrics }`. It predicts 7-day impressions from the 1h and 6h snapshots (24h and 48h are accepted and not used, because they are later than a 6-hour decision). Features are `log(impressions / rolling median of earlier posts at that age)` at 1h and 6h, `log(imp_6h / imp_1h)`, and the engagement rate at those two ages. The baseline is `impressions_1h × median(impressions_7d / impressions_1h)` on that account's training posts.
+
+The pre-registered gate for this mode is **log-MAE**, at least 5% lower than that 1h multiplier, with the same size and Spearman rules. It becomes the decision only when this mode is scored on a fresh forward holdout of snapshot data. It is not applied to impression files that have already been seen, and it does not replace the raw-MAE gate above. Snapshot fits are not written into the compose-time forecast.
+
+```bash
+pnpm --filter @reach/rules-engine backtest -- --snapshots snapshots.json
+```
+
+`posts.json` is an array of posts with `public_metrics` (the X API post shape). Replies, posts younger than 3 days, captions with no scorable text, and duplicate captions are dropped from the fit. Posts from the last 3 days stay in the live recency and topic context; their impressions are still moving, so they stay out of the rolling baseline. The daily calibrate cron fits the per-account model for tracked tweets and stores it on the user. The extension reads that snapshot, refreshing account health when the cache is missing, and shows the checklist when no model has passed.
 
 ## Quick Start
 
@@ -326,14 +339,16 @@ reach-optimizer/
 ## Running Tests
 
 ```bash
-# Package tests (88 passing: 75 rules-engine + 13 ai-checks)
+# Package tests (98 passing: 85 rules-engine + 13 ai-checks)
 pnpm test
 
-# Rules engine only (75 tests)
+# Rules engine only (85 tests)
 pnpm --filter @reach/rules-engine test
 
-# Time-ordered backtest against a posts file
+# Time-ordered backtest against one or more posts files
 pnpm --filter @reach/rules-engine backtest -- posts.json --timezone Europe/Istanbul
+pnpm --filter @reach/rules-engine backtest -- a.json b.json --pooled --quoted-impressions
+pnpm --filter @reach/rules-engine backtest -- --snapshots snapshots.json
 
 # Type checking
 pnpm typecheck

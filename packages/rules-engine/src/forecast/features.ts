@@ -12,6 +12,7 @@ export const TEXT_FEATURE_KEYS = [
   'specific_number_count',
   'any_number_count',
   'link_count',
+  'has_link',
   'has_question',
   'has_image',
   'has_video',
@@ -28,10 +29,27 @@ export const TEXT_FEATURE_KEYS = [
   'log_baseline_impressions',
   'log_baseline_engagement',
   'log1p_followers',
+  'q_present',
+  'q_rel_imp',
+  'q_log_followers',
+  'q_log_age_h',
+  'q_self',
 ] as const;
 
-export function orderedFeatureNames(): string[] {
-  return [...SIGNAL_NAMES.map((name) => `sig_${name}`), ...TEXT_FEATURE_KEYS];
+export interface FeatureListOptions {
+  /**
+   * Include fetch-time quoted impressions (`q_rel_imp`).
+   * Off unless a backtest asks for it: the count is measured after the quote
+   * exists, so the quote itself has already added views.
+   */
+  quotedImpressions?: boolean;
+}
+
+export function orderedFeatureNames(options?: FeatureListOptions): string[] {
+  const text = options?.quotedImpressions
+    ? TEXT_FEATURE_KEYS
+    : TEXT_FEATURE_KEYS.filter((key) => key !== 'q_rel_imp');
+  return [...SIGNAL_NAMES.map((name) => `sig_${name}`), ...text];
 }
 
 const DOW: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
@@ -120,6 +138,15 @@ export function scorePost(input: {
   };
 }
 
+export interface QuoteParts {
+  /** Quoted post had a finite impression count at feature-build time. */
+  metricsPresent: boolean;
+  impressions: number | null;
+  authorFollowers: number | null;
+  ageHours: number | null;
+  selfQuote: boolean;
+}
+
 export interface FeatureParts {
   text: string;
   signals: Record<string, number>;
@@ -134,6 +161,9 @@ export interface FeatureParts {
   baselineImpressions: number;
   baselineEngagement: number;
   followerCount: number | null;
+  /** Known at compose time. Fetch-time quoted impressions stay behind the toggle. */
+  quote?: QuoteParts | null;
+  quotedImpressions?: boolean;
 }
 
 export function buildFeatureRecord(parts: FeatureParts): Record<string, number> {
@@ -148,6 +178,7 @@ export function buildFeatureRecord(parts: FeatureParts): Record<string, number> 
   rec.specific_number_count = countMatches(text, SPECIFIC_NUMBER_REGEX.source, SPECIFIC_NUMBER_REGEX.flags);
   rec.any_number_count = countMatches(text, '\\d+(?:\\.\\d+)?%?', 'g');
   rec.link_count = countMatches(text, 'https?:\\/\\/\\S+', 'gi');
+  rec.has_link = rec.link_count > 0 ? 1 : 0;
   rec.has_question = text.includes('?') ? 1 : 0;
   rec.has_image = parts.hasImage ? 1 : 0;
   rec.has_video = parts.hasVideo ? 1 : 0;
@@ -165,6 +196,17 @@ export function buildFeatureRecord(parts: FeatureParts): Record<string, number> 
   rec.log_baseline_engagement = finite(Math.log(parts.baselineEngagement + 1e-3));
   rec.log1p_followers =
     parts.followerCount != null && parts.followerCount > 0 ? finite(Math.log1p(parts.followerCount)) : 0;
+  const quote = parts.quote;
+  const quotedKnown = !!quote?.metricsPresent && quote.impressions != null;
+  rec.q_present = parts.isQuote && quotedKnown ? 1 : 0;
+  rec.q_rel_imp =
+    parts.quotedImpressions && rec.q_present === 1
+      ? finite(Math.log((quote!.impressions ?? 0) + 1) - Math.log(Math.max(parts.baselineImpressions, 1)))
+      : 0;
+  rec.q_log_followers =
+    quote?.authorFollowers != null ? finite(Math.log1p(Math.max(0, quote.authorFollowers))) : 0;
+  rec.q_log_age_h = quote?.ageHours != null ? finite(Math.log1p(Math.max(0, quote.ageHours))) : 0;
+  rec.q_self = quote?.selfQuote ? 1 : 0;
   for (const key of Object.keys(rec)) rec[key] = finite(rec[key]!);
   return rec;
 }

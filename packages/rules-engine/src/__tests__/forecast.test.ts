@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { forecastDraft } from '../forecast/draft';
 import { parsePostsJson, prepareDataset, type HistoryPost } from '../forecast/dataset';
 import { zonedHourDow } from '../forecast/features';
-import { judgeTarget, runBacktest } from '../forecast/model';
+import { judgeLogMae, judgeTarget, runBacktest } from '../forecast/model';
 import { fitRidge, predictRidge } from '../forecast/ridge';
 import { median } from '../forecast/stats';
 
@@ -87,6 +87,40 @@ describe('spam-marker regression is covered by signal tests', () => {
         baselineSpearman: -0.2,
         modelMae: 50,
         baselineMae: 100,
+      }).passed,
+    ).toBe(false);
+    // A log-MAE win does not open the impression gate.
+    expect(
+      judgeTarget({
+        trainN: 40,
+        testN: 20,
+        modelSpearman: 0.4,
+        baselineSpearman: 0.1,
+        modelMae: 99,
+        baselineMae: 100,
+      }).passed,
+    ).toBe(false);
+  });
+
+  it('judgeLogMae is the snapshot gate and is not implied by a raw-MAE miss', () => {
+    expect(
+      judgeLogMae({
+        trainN: 40,
+        testN: 20,
+        modelSpearman: 0.4,
+        baselineSpearman: 0.1,
+        modelMaeLog: 0.9,
+        baselineMaeLog: 1,
+      }).passed,
+    ).toBe(true);
+    expect(
+      judgeLogMae({
+        trainN: 40,
+        testN: 20,
+        modelSpearman: 0.4,
+        baselineSpearman: 0.1,
+        modelMaeLog: 0.97,
+        baselineMaeLog: 1,
       }).passed,
     ).toBe(false);
   });

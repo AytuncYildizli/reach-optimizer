@@ -1,7 +1,15 @@
 export { ScoreEngine, MAX_LEARNED_ADJUSTMENT } from './engine';
 export type { WeightAdjustments } from './engine';
-export { parsePostsJson, runBacktest, forecastDraft, judgeTarget } from './forecast';
-export type { HistoryPost, BacktestOptions, BacktestReport, DraftInput } from './forecast';
+export {
+  parsePostsJson,
+  runBacktest,
+  runPooledBacktest,
+  runSnapshotBacktest,
+  forecastDraft,
+  judgeTarget,
+  judgeLogMae,
+} from './forecast';
+export type { HistoryPost, BacktestOptions, BacktestReport, DraftInput, PooledBacktestReport, SnapshotBacktestReport } from './forecast';
 export { buildContext } from './context';
 export { runAllSignals, signalPredictors } from './signals';
 export type { SignalPredictor } from './signals';
