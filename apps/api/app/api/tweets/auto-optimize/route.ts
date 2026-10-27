@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken } from '@lib/auth';
-import { applyRateLimit } from '@lib/middleware';
+import { applyRateLimit, authenticateRequest } from '@lib/middleware';
 import { env } from '@lib/env';
 import { ScoreEngine } from '@reach/rules-engine';
 import { detectLanguage, getLanguageInstruction } from '@reach/ai-checks';
@@ -38,17 +37,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'Content too short' }, { status: 400 });
   }
 
-  // Try auth (optional in beta)
-  let userId: string | null = null;
-  const authHeader = request.headers.get('Authorization');
-  if (authHeader?.startsWith('Bearer ')) {
-    const auth = await verifyToken(authHeader.slice(7));
-    if (auth) userId = auth.userId;
-  }
+  // Signed-in users only: this route spends the server's Anthropic key
+  // and/or stores user data, so anonymous callers are rejected.
+  const auth = await authenticateRequest(request);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth.userId;
 
-  // Rate limit
-  const identifier = userId ?? (request.headers.get('x-forwarded-for') ?? 'anonymous');
-  const rateLimited = applyRateLimit(request, identifier);
+  const rateLimited = applyRateLimit(request, userId);
   if (rateLimited) return rateLimited;
 
   if (!env.ANTHROPIC_API_KEY) {

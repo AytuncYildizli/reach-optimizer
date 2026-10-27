@@ -95,6 +95,8 @@ export interface SignalScore {
   firedRules: string[];
   subRules: SubRule[];
   suggestion?: string;
+  /** Points added (or removed) by learned per-user weights, already included in `score`. */
+  learnedAdjustment?: number;
 }
 
 export interface TextHighlight {

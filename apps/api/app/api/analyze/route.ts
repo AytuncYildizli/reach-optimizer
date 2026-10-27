@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken } from '@lib/auth';
-import { applyRateLimit } from '@lib/middleware';
+import { applyRateLimit, clientIp } from '@lib/middleware';
 import { prisma } from '@lib/db';
 import { env } from '@lib/env';
 import { ScoreEngine } from '@reach/rules-engine';
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     if (auth) userId = auth.userId;
   }
 
-  const identifier = userId ?? (request.headers.get('x-forwarded-for') ?? 'anonymous');
+  const identifier = userId ?? clientIp(request);
   const rateLimited = applyRateLimit(request, identifier);
   if (rateLimited) return rateLimited;
 
@@ -63,7 +63,9 @@ export async function POST(request: NextRequest) {
   let aiPointsDelta = 0;
   const aiSuggestions: Suggestion[] = [];
 
-  if (env.ANTHROPIC_API_KEY) {
+  // AI checks spend the server's Anthropic key, so they only run for signed-in
+  // users. Anonymous callers still get the rules-engine score below.
+  if (userId && env.ANTHROPIC_API_KEY) {
     try {
       const analyzer = new AIAnalyzer(env.ANTHROPIC_API_KEY);
       const serverResult = await analyzer.fullAnalysis(body.content);
@@ -91,28 +93,47 @@ export async function POST(request: NextRequest) {
   // as a positive nudge to score, independent of the 22-signal model.
   let trendingAlignment: AnalysisResult['trendingAlignment'] = null;
   let trendingDelta = 0;
-  try {
-    const trendingData = await getCachedTrends();
-    const alignment = checkTrendingAlignment(body.content, trendingData.trends);
-    trendingAlignment = alignment;
-    if (alignment.isAligned) {
-      trendingDelta = alignment.bonusPoints;
-      const trendNames = alignment.matchedTrends.map((t) => t.name).join(', ');
-      aiSuggestions.push({
-        ruleId: 'server-trending-boost',
-        severity: 'positive',
-        title: 'Trending Topic Boost',
-        description: `Your tweet aligns with trending topic${alignment.matchedTrends.length > 1 ? 's' : ''}: ${trendNames}. +${alignment.bonusPoints} bonus points!`,
-      });
+  // Trends come from a paid upstream API, so this is signed-in only too.
+  if (userId) {
+    try {
+      const trendingData = await getCachedTrends();
+      const alignment = checkTrendingAlignment(body.content, trendingData.trends);
+      trendingAlignment = alignment;
+      if (alignment.isAligned) {
+        trendingDelta = alignment.bonusPoints;
+        const trendNames = alignment.matchedTrends.map((t) => t.name).join(', ');
+        aiSuggestions.push({
+          ruleId: 'server-trending-boost',
+          severity: 'positive',
+          title: 'Trending Topic Boost',
+          description: `Your tweet aligns with trending topic${alignment.matchedTrends.length > 1 ? 's' : ''}: ${trendNames}. +${alignment.bonusPoints} bonus points!`,
+        });
+      }
+    } catch (error) {
+      console.error('[Analyze] Trending alignment check failed (non-blocking):', error);
     }
-  } catch (error) {
-    console.error('[Analyze] Trending alignment check failed (non-blocking):', error);
   }
 
   // Run the v4 engine server-side with the SAME composer context the client
   // sees, so persisted scores don't diverge from displayed scores. Falls back
   // to text-only evaluation for older clients that don't send the context.
-  const serverResult = engine.evaluate({
+  // Signed-in users get their learned weights (written by the learn-weights
+  // cron), matching what the extension applies locally from /api/weights.
+  let scoringEngine = engine;
+  if (userId) {
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { personalizedWeights: true },
+      });
+      const learned = user?.personalizedWeights as Record<string, number> | null;
+      if (learned && Object.keys(learned).length > 0) scoringEngine = new ScoreEngine(learned);
+    } catch (err) {
+      console.error('[Analyze] Loading learned weights failed (non-blocking):', err);
+    }
+  }
+
+  const serverResult = scoringEngine.evaluate({
     text: body.content,
     platform: body.platform ?? 'x',
     isThread: body.isThread ?? false,

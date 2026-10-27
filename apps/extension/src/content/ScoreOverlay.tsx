@@ -1,11 +1,9 @@
 import { useState, useEffect } from "react";
 import type { AnalysisResult, ScoreTier, SignalBucket, SignalName, SignalScore, Suggestion, TrendingAlignment, AccountHealth, ReachForecast as ReachForecastType, WhatIfScenario } from "@reach/shared-types";
-import { ScoreEngine } from "@reach/rules-engine";
+// Composer engine (with learned weights) scores auto-optimize variations client-side
+import { composerEngine as localEngine } from "./learned-weights";
 import { t } from "./i18n";
 import { computeForecast, formatNumber } from "./forecast-engine";
-
-// Local scoring engine for auto-optimize (score variations client-side)
-const localEngine = new ScoreEngine();
 
 // ---------------------------------------------------------------------------
 // AutoOptimizeSection — score-aware optimization with client-side scoring

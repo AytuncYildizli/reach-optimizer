@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken } from '@lib/auth';
-import { applyRateLimit } from '@lib/middleware';
+import { applyRateLimit, authenticateRequest } from '@lib/middleware';
 import { prisma } from '@lib/db';
 
 export const runtime = 'nodejs';
@@ -40,17 +39,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // 2. Try auth (optional in beta)
-  let userId: string | null = null;
-  const authHeader = request.headers.get('Authorization');
-  if (authHeader?.startsWith('Bearer ')) {
-    const auth = await verifyToken(authHeader.slice(7));
-    if (auth) userId = auth.userId;
-  }
+  // Signed-in users only: this route spends the server's Anthropic key
+  // and/or stores user data, so anonymous callers are rejected.
+  const auth = await authenticateRequest(request);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth.userId;
 
-  // 3. Rate limit by userId or IP
-  const identifier = userId ?? (request.headers.get('x-forwarded-for') ?? 'anonymous');
-  const rateLimited = applyRateLimit(request, identifier);
+  const rateLimited = applyRateLimit(request, userId);
   if (rateLimited) return rateLimited;
 
   // 4. Extract x_tweet_id from URL

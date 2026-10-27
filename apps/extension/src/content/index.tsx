@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { createRoot } from "react-dom/client";
-import { ScoreEngine } from "@reach/rules-engine";
 import type { AnalysisResult, ScoreTier, TweetInput } from "@reach/shared-types";
 import { ComposerDetector } from "./composer-detector";
+import { composerEngine as engine, initLearnedWeights } from "./learned-weights";
 import { setupPostTracker } from "./post-tracker";
 import { getPostsToday, primePostsToday } from "./posts-today";
 import { setupReplyCoach } from "./reply-coach";
@@ -11,11 +11,6 @@ import { ScoreOverlay } from "./ScoreOverlay";
 import { OVERLAY_STYLES } from "./styles";
 
 console.log("[ReachOS] Content script loaded");
-
-// ---------------------------------------------------------------------------
-// Score engine (all client-side rules)
-// ---------------------------------------------------------------------------
-const engine = new ScoreEngine();
 
 // ---------------------------------------------------------------------------
 // Global state bridge — lets imperative code push state into React
@@ -576,6 +571,9 @@ function init(): void {
   // Prime the postsToday cache from chrome.storage.local so the first
   // analyse() of the session already knows the day's count.
   void primePostsToday();
+
+  // Signed-in users score with their learned weights (see learned-weights.ts).
+  initLearnedWeights();
 
   const detector = new ComposerDetector(onComposerTextChange);
   detector.start();

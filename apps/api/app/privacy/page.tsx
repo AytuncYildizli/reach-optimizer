@@ -4,21 +4,23 @@ export default function PrivacyPage() {
   return (
     <div style={{ maxWidth: 700, margin: '0 auto', padding: '40px 20px', color: '#e7e9ea', background: '#000', minHeight: '100vh', fontFamily: '-apple-system, system-ui, sans-serif' }}>
       <h1 style={{ fontSize: 28, marginBottom: 8 }}>Privacy Policy</h1>
-      <p style={{ color: '#71767b', marginBottom: 32 }}>ReachOS — Open-source Reach Optimizer. Last updated: April 3, 2026.</p>
+      <p style={{ color: '#71767b', marginBottom: 32 }}>ReachOS — Open-source Reach Optimizer. Last updated: October 27, 2026.</p>
 
       <h2 style={{ fontSize: 20, marginTop: 24 }}>How It Works</h2>
-      <p style={{ color: '#b0b3b8', lineHeight: 1.8 }}>ReachOS scores your tweets locally using 36 rules that run entirely on your device. AI features (slop detection, auto-optimize, suggestions) are optional and use your own configured API server. ReachOS is fully open source and self-hostable.</p>
+      <p style={{ color: '#b0b3b8', lineHeight: 1.8 }}>ReachOS scores your tweets locally using 25 signal predictors that run entirely on your device. Signing in to a ReachOS server and adding your own Anthropic key are both optional. ReachOS is fully open source and self-hostable.</p>
 
       <h2 style={{ fontSize: 20, marginTop: 24 }}>What We Collect</h2>
       <ul style={{ color: '#b0b3b8', lineHeight: 1.8 }}>
-        <li>Tweet text is analyzed locally in real time — it never leaves your device unless you use server-side AI features</li>
-        <li>If you configure a server and sign in: your X profile info (username, display name) is stored on your server for account features</li>
-        <li>No centralized analytics, telemetry, or tracking</li>
+        <li>Without signing in, tweet text is scored on your device and is never sent to a ReachOS server</li>
+        <li>With your own Anthropic key (BYOK), text you run AI features on goes directly from your browser to Anthropic</li>
+        <li>If you sign in (with X), the server stores your X profile info, draft text sent for server AI checks (skipped when you have your own key), and the text, score, URL and public engagement metrics of tweets you post. This is used for your tweet history and to learn which signals work for your account</li>
+        <li>That data is tied to your account and only returned to you. Signing out stops all of it. To delete it, open an issue on GitHub</li>
+        <li>No analytics, telemetry, or advertising tracking</li>
       </ul>
 
       <h2 style={{ fontSize: 20, marginTop: 24 }}>What We Do NOT Collect</h2>
       <ul style={{ color: '#b0b3b8', lineHeight: 1.8 }}>
-        <li>We do not operate a centralized data collection service</li>
+        <li>We collect nothing from users who are not signed in</li>
         <li>We do not track browsing history, DMs, followers, or any X.com data</li>
         <li>We do not sell or share any data with third parties</li>
         <li>We do not use data for advertising</li>

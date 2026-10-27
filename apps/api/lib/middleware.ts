@@ -29,6 +29,18 @@ export async function authenticateRequest(
   return auth;
 }
 
+/**
+ * Best-effort client IP for rate-limiting anonymous callers. Vercel sets
+ * x-real-ip and rewrites x-forwarded-for, so neither can be spoofed there.
+ */
+export function clientIp(request: NextRequest): string {
+  return (
+    request.headers.get('x-real-ip') ??
+    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+    'anonymous'
+  );
+}
+
 export function applyRateLimit(request: NextRequest, identifier: string): NextResponse | null {
   const url = new URL(request.url);
   const { allowed, remaining, resetIn } = checkRateLimit(identifier, url.pathname);

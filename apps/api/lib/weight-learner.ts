@@ -1,4 +1,10 @@
+import { SIGNAL_NAMES, type SignalName } from '@reach/shared-types';
+import { MAX_LEARNED_ADJUSTMENT } from '@reach/rules-engine';
 import { prisma } from './db';
+
+/** Adjustment keys match the ruleIds the v4 engine puts on suggestions. */
+const signalRuleId = (name: SignalName) => `signal:${name}`;
+const ALL_RULE_IDS = SIGNAL_NAMES.map(signalRuleId);
 
 export interface RulePerformance {
   ruleId: string;
@@ -57,43 +63,21 @@ export async function analyzeRulePerformance(userId?: string): Promise<RulePerfo
     if (!analysis) continue;
 
     // Parse rule results from analysis
-    const suggestions = (analysis.suggestions as Array<{ ruleId?: string }>) || [];
+    // v4 rows store the engine's signalScores object in ruleResults. A
+    // signal "fired" when it was applicable and moved the score. Older v3
+    // rows (an array) have no v4 signals and are skipped.
+    const signalScores = analysis.ruleResults as unknown;
+    if (!signalScores || typeof signalScores !== 'object' || Array.isArray(signalScores)) continue;
 
-    // Track which rules fired
-    const firedRules = new Set(suggestions.map((s) => s.ruleId).filter(Boolean));
+    const firedRules = new Set<string>();
+    for (const name of SIGNAL_NAMES) {
+      const sig = (signalScores as Record<string, { score?: number; applicable?: boolean }>)[name];
+      if (sig && sig.applicable !== false && typeof sig.score === 'number' && sig.score !== 0) {
+        firedRules.add(signalRuleId(name));
+      }
+    }
 
-    // All known rule IDs
-    const allRuleIds = [
-      'hook-generic-pattern',
-      'hook-length-check',
-      'hook-number-data',
-      'hook-multi-sentence',
-      'hook-open-loop',
-      'hook-contrarian-claim',
-      'hook-story-opener',
-      'structure-char-length',
-      'penalty-hashtag-spam',
-      'penalty-emoji-spam',
-      'structure-thread-length',
-      'engagement-cta-presence',
-      'engagement-question-type',
-      'engagement-bookmark-value',
-      'engagement-choice-question',
-      'engagement-direct-address',
-      'penalty-link-external',
-      'penalty-engagement-bait',
-      'penalty-text-wall',
-      'penalty-dead-ending',
-      'penalty-combative-tone',
-      'penalty-ai-slop-words',
-      'penalty-ai-slop-structure',
-      'penalty-stale-formula',
-      'penalty-hedging-opener',
-      'bonus-first-person',
-      'bonus-specific-number',
-    ];
-
-    for (const ruleId of allRuleIds) {
+    for (const ruleId of ALL_RULE_IDS) {
       if (!ruleStats[ruleId]) ruleStats[ruleId] = { triggered: [], notTriggered: [] };
       if (firedRules.has(ruleId)) {
         ruleStats[ruleId].triggered.push(outcomeScore);
@@ -154,12 +138,13 @@ export function generateWeightAdjustments(
   for (const rule of performance) {
     if (rule.timesTriggered < 3) continue; // Need minimum data
 
-    // If a rule has strong positive lift (>10), increase its weight
-    // If negative lift, decrease
-    if (rule.lift > 10) {
-      adjustments[rule.ruleId] = Math.round(rule.lift / 5); // +2 to +6
-    } else if (rule.lift < -10) {
-      adjustments[rule.ruleId] = Math.round(rule.lift / 5); // -2 to -6
+    // Strong positive lift (>10) raises the signal's points, strong negative
+    // lift lowers them. The engine applies these (ScoreEngine.setAdjustments).
+    if (Math.abs(rule.lift) > 10) {
+      adjustments[rule.ruleId] = Math.max(
+        -MAX_LEARNED_ADJUSTMENT,
+        Math.min(MAX_LEARNED_ADJUSTMENT, Math.round(rule.lift / 5)),
+      );
     }
   }
 
