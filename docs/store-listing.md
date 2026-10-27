@@ -38,7 +38,7 @@ What-If Scenarios: See what happens if you add an image (+35%), post at peak tim
 
 X-Ray Mode: Scores every tweet on your timeline as you scroll. Color-coded pills (red to purple) show reach potential at a glance. See what works and what doesn't.
 
-AI Auto-Optimize: One click runs 5 rounds of iterative AI rewriting to find the highest-reach version of your tweet. Powered by Claude.
+AI Auto-Optimize: One click runs 5 rounds of iterative AI rewriting to find the highest-reach version of your tweet. Powered by Claude (your own key, or sign in to use the hosted server).
 
 AI Slop Detection: Flags AI-sounding language patterns (heuristic + LLM verification). Robotic content gets scrolled past.
 
@@ -46,7 +46,7 @@ Ad Disclosure Detection: Flags undisclosed promo language and referral links bef
 
 Daily Post-Frequency Decay: Warns when each additional post that day earns less distribution than the last.
 
-Reply Coach: Notifies you about unanswered replies on your tweets. Replies are one of the heaviest positive signals in X's ranking.
+Reply Coach (signed in): Notifies you about unanswered replies on your tweets. Replies are one of the heaviest positive signals in X's ranking.
 
 Self-Reply Strategy: Generate a conversation-starting self-reply.
 
@@ -54,7 +54,7 @@ Trending Alignment: Detects when your tweet matches currently trending topics.
 
 Posting Time Optimizer: Shows optimal posting windows based on UTC peak engagement data.
 
-Self-Learning: Tracks your predictions vs actual performance and auto-calibrates over time.
+Self-Learning (signed in): Tracks your predictions vs actual performance, calibrates the forecast, and learns which signals lift your tweets. Your Reach Score then applies those learned weights.
 
 BYOK (Bring Your Own Keys): Deploy your own API server or use the hosted instance. Configure in Settings. Fully open-source on GitHub.
 
@@ -78,6 +78,6 @@ Open source: github.com/AytuncYildizli/reach-optimizer
 
 ## Short description (manifest.json, ≤132 chars)
 
-Real-time Reach Score for tweets. Aligned to xai-org/x-algorithm. 25 signal predictors, video-first scoring, BYOK AI.
+Real-time Reach Score for tweets. Aligned to xai-org/x-algorithm. 25 signal predictors, time-spent scoring, BYOK AI.
 
 (Currently 117 chars — leaves 15 chars of headroom for future tweaks.)
