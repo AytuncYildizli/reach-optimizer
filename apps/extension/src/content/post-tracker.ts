@@ -1,6 +1,7 @@
 /**
  * PostTracker — detects when the user clicks the "Post" button on X.com
- * and sends tracking data (tweet text + ReachOS score) to the API.
+ * and, for signed-in users only, sends tracking data (tweet text + ReachOS
+ * score) to the API.
  */
 
 import { incrementPostsToday } from './posts-today';
@@ -30,17 +31,14 @@ export function setupPostTracker(
             // a failed storage write just means the next score is unaffected.
             void incrementPostsToday();
 
-            chrome.runtime.sendMessage({
-              type: "API_REQUEST",
-              endpoint: "/api/tweets/track",
-              method: "POST",
-              body: {
-                content: text,
-                reachScore: score,
-                predictedReach: predictedReach > 0 ? predictedReach : undefined,
-                optimized: true,
-                tweetUrl: window.location.href,
-              },
+            // Only signed-in users opted into server tracking. Signed-out
+            // users stay local: the tweet text never leaves the device.
+            void sendTrackingIfSignedIn({
+              content: text,
+              reachScore: score,
+              predictedReach: predictedReach > 0 ? predictedReach : undefined,
+              optimized: true,
+              tweetUrl: window.location.href,
             });
             // Lock score for X-Ray consistency
             if (onPosted) onPosted(text, score);
@@ -57,4 +55,19 @@ export function setupPostTracker(
   });
 
   observer.observe(document.body, { childList: true, subtree: true });
+}
+
+async function sendTrackingIfSignedIn(body: Record<string, unknown>): Promise<void> {
+  try {
+    const { authToken } = await chrome.storage.local.get("authToken");
+    if (!authToken) return;
+    chrome.runtime.sendMessage({
+      type: "API_REQUEST",
+      endpoint: "/api/tweets/track",
+      method: "POST",
+      body,
+    });
+  } catch {
+    // Extension context lost: skip tracking.
+  }
 }

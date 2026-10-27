@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { verifyCronAuth } from '@lib/cron-auth';
 import { generateCalibrationReport } from '@lib/calibration';
 
 export const runtime = 'nodejs';
@@ -14,8 +15,14 @@ export const maxDuration = 60;
  * Data sources:
  *   - tracked_tweets + tweet_metrics (our DB)
  *   - ops DB (yellow-jacket) tweets with rating + engagement data
+ *
+ * Operator-only (same secret as the cron routes): the report aggregates every
+ * user's data plus the ops DB and is expensive to compute.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const denied = verifyCronAuth(request);
+  if (denied) return denied;
+
   try {
     const report = await generateCalibrationReport();
 

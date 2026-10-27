@@ -51,13 +51,14 @@ Scores every tweet on your timeline as you scroll. Color-coded pills (red/orange
 - **Account Health** - 5-factor health score with actionable tips
 
 ### Self-Learning Loop
-The system gets smarter over time:
+For signed-in users, the system gets smarter over time:
 
 ```
 Post tweet → Save prediction → Fetch real metrics (15min)
     → Compare predicted vs actual (daily)
-    → Auto-calibrate correction factor
-    → Next prediction is more accurate
+    → Auto-calibrate forecast correction factor
+    → Learn which signals lift YOUR tweets (daily, needs 5+ tracked tweets)
+    → Your Reach Score applies those learned weights (±6 points per signal)
 ```
 
 ## How It Works
@@ -140,7 +141,8 @@ If you want to self-host the API for AI features:
 | `X_CLIENT_ID` | [X Developer Portal](https://developer.x.com) | For "Connect X" login (optional) |
 | `X_CLIENT_SECRET` | X Developer Portal | For "Connect X" login (optional) |
 | `TWITTER_API_IO_KEY` | [twitterapi.io](https://twitterapi.io) | For trending + metrics (optional) |
-| `CRON_SECRET` | `openssl rand -hex 32` | Protects cron endpoints (recommended) |
+| `CRON_SECRET` | `openssl rand -hex 32` | Protects cron endpoints. **Required in production**: without it the cron routes reject every request |
+| `ALLOWED_ORIGINS` | `chrome-extension://<your unpacked id>` | Extra origins allowed by CORS (optional; the store extension is always allowed) |
 
 ### 3. Push database schema
 

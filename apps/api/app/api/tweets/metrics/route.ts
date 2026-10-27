@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken } from '@lib/auth';
+import { authenticateRequest } from '@lib/middleware';
 import { prisma } from '@lib/db';
 
 export const runtime = 'nodejs';
@@ -9,20 +9,16 @@ export async function OPTIONS() {
 }
 
 export async function GET(request: NextRequest) {
-  // Try auth (optional in beta)
-  let userId: string | null = null;
-  const authHeader = request.headers.get('Authorization');
-  if (authHeader?.startsWith('Bearer ')) {
-    const auth = await verifyToken(authHeader.slice(7));
-    if (auth) userId = auth.userId;
-  }
+  // Tracked tweets are per-user data: never return rows without a verified
+  // owner (an unfiltered query used to expose every user's tweets).
+  const auth = await authenticateRequest(request);
+  if (auth instanceof NextResponse) return auth;
 
   try {
-    const where = userId ? { userId } : {};
     const tweets = await prisma.trackedTweet.findMany({
-      where,
+      where: { userId: auth.userId },
       orderBy: { createdAt: 'desc' },
-      take: userId ? 50 : 10,
+      take: 50,
       include: {
         metrics: {
           orderBy: { measuredAt: 'desc' },

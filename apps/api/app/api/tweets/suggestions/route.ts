@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken } from '@lib/auth';
-import { applyRateLimit } from '@lib/middleware';
+import { applyRateLimit, authenticateRequest } from '@lib/middleware';
 import { prisma } from '@lib/db';
 import { env } from '@lib/env';
 
@@ -12,17 +11,13 @@ export async function OPTIONS() {
 }
 
 export async function GET(request: NextRequest) {
-  // Try auth (optional)
-  let userId: string | null = null;
-  const authHeader = request.headers.get('Authorization');
-  if (authHeader?.startsWith('Bearer ')) {
-    const auth = await verifyToken(authHeader.slice(7));
-    if (auth) userId = auth.userId;
-  }
+  // Signed-in users only: this route spends the server's Anthropic key
+  // and/or stores user data, so anonymous callers are rejected.
+  const auth = await authenticateRequest(request);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth.userId;
 
-  // Rate limit
-  const identifier = userId ?? (request.headers.get('x-forwarded-for') ?? 'anonymous');
-  const rateLimited = applyRateLimit(request, identifier);
+  const rateLimited = applyRateLimit(request, userId);
   if (rateLimited) return rateLimited;
 
   if (!env.ANTHROPIC_API_KEY) {

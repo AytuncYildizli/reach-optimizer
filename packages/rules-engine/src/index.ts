@@ -1,4 +1,5 @@
-export { ScoreEngine } from './engine';
+export { ScoreEngine, MAX_LEARNED_ADJUSTMENT } from './engine';
+export type { WeightAdjustments } from './engine';
 export { buildContext } from './context';
 export { runAllSignals, signalPredictors } from './signals';
 export type { SignalPredictor } from './signals';
