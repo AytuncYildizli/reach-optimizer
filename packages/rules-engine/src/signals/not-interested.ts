@@ -1,7 +1,7 @@
 import type { PostContext, SignalScore } from '@reach/shared-types';
 import { buildSignalScore, selfPromoRatio } from './_helpers';
 
-export const NOT_INTERESTED_PENALTY = -8;
+export const NOT_INTERESTED_PENALTY = -12;
 
 const RANT_MARKERS = /\b(rant|venting|sick of|fed up|so done|nobody cares|disgusting|hate when)\b/i;
 
@@ -14,19 +14,19 @@ export function predictNotInterested(ctx: PostContext): SignalScore {
     rules: [
       {
         name: 'pure_rant_without_insight',
-        weight: -3,
+        weight: -5,
         test: (c) =>
           RANT_MARKERS.test(c.text) &&
           !/\b(here'?s why|the reason|fix|solution|instead)\b/i.test(c.text),
       },
       {
         name: 'excessive_self_promotion',
-        weight: -3,
+        weight: -4,
         test: (c) => selfPromoRatio(c.text) > 0.6,
       },
       {
         name: 'low_value_density',
-        weight: -2,
+        weight: -3,
         test: (c) =>
           c.charCount < 40 &&
           !/\?|!|\d/.test(c.text) &&

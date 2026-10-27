@@ -149,6 +149,49 @@ export function isWallOfText(text: string): boolean {
   return trimmed.length > 300 && !hasParagraphBreaks(trimmed);
 }
 
+const PAYOFF_MARKERS =
+  /^(?:(?:that'?s why|which means|the lesson|lesson|the takeaway|takeaway|bottom line|tl;?dr|in short|the fix|the answer|moral)\b|(?:net|result|verdict):)/i;
+
+// "So" opens a conclusion only when it is a full statement, not "So yeah." or
+// "So many people get this wrong?".
+const SO_CONCLUSION = /^so,?\s+(?!many\b|much\b|yeah\b|true\b)\S+(?:\s+\S+){2,}/i;
+
+// Hooks that promise something the hook itself doesn't state. "Wait for it"
+// is excluded: it is a video caption cue that vqv rewards. "The trick is ..."
+// is excluded: it usually states the trick inline.
+const CURIOSITY_HOOK =
+  /\b(you won'?t believe|here'?s what happened|nobody tells you|this changed everything)\b/i;
+
+// Numbers that carry meaning (money, percent, a count with a unit), not years
+// or clock times.
+export const SPECIFIC_NUMBER_REGEX =
+  /\$[\d,]+|\d+(?:\.\d+)?%|\b\d[\d,.]*\s?(?:x|k|m|users|customers|clients|days|weeks|months|hours|minutes|mins|seconds|people|posts|followers|views|signups|steps|lines)\b/i;
+
+export function stripUrls(text: string): string {
+  return text.replace(/https?:\/\/\S+/gi, '');
+}
+
+// X's retrieval model (Oct 2026) is trained to surface posts people read all
+// the way through. A multi-line post that lands a conclusion on its final line
+// rewards readers who reach the end.
+export function hasReadThroughPayoff(text: string): boolean {
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  if (lines.length < 2) return false;
+  const last = lines[lines.length - 1]!;
+  if (last.endsWith('?')) return false;
+  return PAYOFF_MARKERS.test(last) || SO_CONCLUSION.test(last);
+}
+
+export function hasCuriosityHook(text: string): boolean {
+  return CURIOSITY_HOOK.test(text);
+}
+
+// A curiosity hook that the post itself never pays off: readers bail before
+// the end, which reads as a scroll-past to the ranker.
+export function hasHookWithoutPayoff(text: string): boolean {
+  return hasCuriosityHook(text) && !hasReadThroughPayoff(text) && !URL_REGEX.test(text);
+}
+
 export function hasGenericOpener(text: string): boolean {
   const openers = [
     'so today',
