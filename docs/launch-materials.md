@@ -5,7 +5,7 @@
 **Tagline:** Open-source Grammarly for tweet reach — know your numbers before you post.
 
 **Description:**
-ReachOS is a Chrome extension that scores your tweets in real-time against the 22 signals xAI published in xai-org/x-algorithm (May 2026). It predicts how many people will see your tweet and shows exactly how to improve it with interactive What-If Scenarios.
+ReachOS is a Chrome extension that scores your tweets in real-time against 25 signal predictors — the 22 signals xAI published in xai-org/x-algorithm (May 2026) plus 3 ReachOS-original signals for ad-disclosure, post-frequency, and microniche consistency. It predicts how many people will see your tweet and shows exactly how to improve it with interactive What-If Scenarios.
 
 Key features:
 - Real-time Reach Score (0-100) as you type
@@ -15,12 +15,12 @@ Key features:
 - AI Slop Detection: flags AI-sounding patterns
 - Fully open source, BYOK, self-hostable
 
-No account needed. 22 signal predictors run locally in your browser. AI features are optional and use your own API key.
+No account needed. 25 signal predictors run locally in your browser. AI features are optional and use your own API key.
 
 **Maker's First Comment:**
 Hey PH! I built ReachOS because I was tired of guessing whether a tweet would perform before posting it.
 
-The scoring is based on the 22 signals xAI published in `xai-org/x-algorithm` on May 15, 2026 — `favorite`, `reply`, `retweet`, `quote`, the three `share_*` variants, `click`, `profile_click`, `follow_author`, `dwell`, and 11 more. ReachOS predicts the probability of each one from a single-file rule predictor.
+The scoring is based on the 22 signals xAI published in `xai-org/x-algorithm` on May 15, 2026 — `favorite`, `reply`, `retweet`, `quote`, the three `share_*` variants, `click`, `profile_click`, `follow_author`, `dwell`, and 11 more — plus 3 ReachOS-original predictors (`ad_disclosure`, `post_frequency`, `topic_consistency`) reflecting observed 2026 algorithm shifts. ReachOS predicts the probability of each one from a single-file rule predictor.
 
 The feature I'm most proud of is What-If Scenarios — it shows you in real-time what happens if you add a curiosity gap before a link, attach an image, or post at peak time. It turns optimization into a game.
 
@@ -43,7 +43,7 @@ Would love your feedback on the scoring model — we're actively adding new rule
 **Body:**
 Hey r/SideProject! I just launched ReachOS — it's basically "Grammarly for reach."
 
-It scores your tweets against 22 signal predictors from X's actual open-sourced algorithm, then predicts how many impressions you'll get. The coolest part is What-If Scenarios — it shows stuff like "remove this link and your reach goes up 52%."
+It scores your tweets against 25 signal predictors from X's actual open-sourced algorithm, then predicts how many impressions you'll get. The coolest part is What-If Scenarios — it shows stuff like "add an image and your reach goes up 35%."
 
 Some stats:
 - 36 scoring rules (hook quality, structure, engagement triggers, penalties)
@@ -65,7 +65,7 @@ Just launched an open-source Chrome extension that overlays a scoring panel on X
 
 - Shadow DOM for style isolation (X.com's CSS is aggressive)
 - MutationObserver for real-time composer text detection with 300ms debounce
-- Client-side rules engine (22 signal predictors, category-capped scoring, configurable weights)
+- Client-side rules engine (25 signal predictors, category-capped scoring, configurable weights)
 - Reach Forecast engine: prediction model with what-if scenario computation
 - X-Ray Mode: scores every tweet on the timeline using WeakSet deduplication + text cache for deterministic results
 
@@ -99,7 +99,7 @@ Free on Chrome Web Store, open source on GitHub. No account needed.
 **Title:** ReachOS: a Chrome extension that predicts how many people will see your tweet before you post it
 
 **Body:**
-It overlays a score panel on X.com that updates as you type. Shows a 0-100 score, predicted impressions, and interactive "what-if" scenarios (remove a link -> +52% reach, add image -> +38%).
+It overlays a score panel on X.com that updates as you type. Shows a 0-100 score, predicted impressions, and interactive "what-if" scenarios (add image -> +35% reach, post at peak time -> +25%).
 
 Also has an "X-Ray Mode" that scores every tweet on your timeline with color-coded pills — so you can see at a glance what performs and what doesn't.
 
@@ -119,10 +119,10 @@ The problem: I kept writing tweets that got zero engagement, deleting them, tryi
 The solution: 36 scoring rules derived from X's open-sourced algorithm (twitter/the-algorithm). The extension runs entirely in your browser — no account, no data sent anywhere.
 
 My favorite feature is What-If Scenarios. It shows you in real time:
-- Remove a link -> +52% reach
-- Add an image -> +38%
+- Add an image -> +35% reach
 - Post at peak time -> +25%
-- All combined -> +77%
+- Curiosity gap before a link -> +18%
+- Align with a trend -> +15%
 
 It's BYOK (bring your own keys) and fully self-hostable. MIT licensed.
 
@@ -140,7 +140,7 @@ Chrome Web Store: [link]
 ### Ben's Bites / TLDR
 **Subject:** ReachOS — open-source Chrome extension that predicts tweet reach using X's algorithm signals
 
-**One-liner:** Free Chrome extension that scores your tweets against 22 signal predictors from X's open-sourced algorithm, predicts impressions, and shows what-if optimization scenarios. Fully open source, BYOK.
+**One-liner:** Free Chrome extension that scores your tweets against 25 signal predictors from X's open-sourced algorithm, predicts impressions, and shows what-if optimization scenarios. Fully open source, BYOK.
 
 **Link:** github.com/AytuncYildizli/reach-optimizer
 
