@@ -18,7 +18,9 @@ interface ForecastInput {
 
 // Multiplier constants — recalibrated for xai-org/x-algorithm (May 2026)
 const IMAGE_MULTIPLIER = 1.35;       // photo_expand signal boost
-const VIDEO_MULTIPLIER = 1.45;       // vqv (video quality view) signal boost
+// X's published vqv weight dropped to 0 in Oct 2026 (video_open is 0.02), so
+// video is a small boost now, in line with rules-engine v4.2 (vqv max 3).
+const VIDEO_MULTIPLIER = 1.15;
 const CLICK_GAP_MULTIPLIER = 1.18;   // Curiosity gap before link boosts click signal
 const TRENDING_MULTIPLIER = 1.15;    // Trending alignment boost
 const PEAK_TIME_MULTIPLIER = 1.25;   // Peak posting time

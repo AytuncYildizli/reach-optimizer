@@ -2,10 +2,11 @@ import type { PostContext, SignalScore } from '@reach/shared-types';
 import {
   buildSignalScore,
   hasParagraphBreaks,
+  hasReadThroughPayoff,
   isWallOfText,
 } from './_helpers';
 
-export const DWELL_MAX = 8;
+export const DWELL_MAX = 10;
 
 export function predictDwell(ctx: PostContext): SignalScore {
   return buildSignalScore(ctx, {
@@ -36,8 +37,13 @@ export function predictDwell(ctx: PostContext): SignalScore {
         weight: 1,
         test: (c) => c.lineCount >= 3 && c.charCount > 200,
       },
+      {
+        name: 'read_through_payoff',
+        weight: 2,
+        test: (c) => hasReadThroughPayoff(c.text),
+      },
     ],
     suggestionWhenLow:
-      'Break the post with line gaps so readers dwell instead of scrolling.',
+      'Break the post with line gaps and land a takeaway on the last line so readers finish it.',
   });
 }
