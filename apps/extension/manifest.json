@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "ReachOS — Content Reach Optimizer",
-  "version": "4.2.0",
-  "description": "Real-time Reach Score for tweets. Aligned to xai-org/x-algorithm. 25 signal predictors, video-first scoring, BYOK AI.",
+  "version": "4.2.1",
+  "description": "Real-time Reach Score for tweets. Aligned to xai-org/x-algorithm. 25 signal predictors, time-spent scoring, BYOK AI.",
   "permissions": ["storage"],
   "host_permissions": [
     "https://x.com/*",
