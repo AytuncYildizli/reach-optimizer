@@ -8,7 +8,7 @@ CWS limits: 132 char manifest description (set in `apps/extension/manifest.json`
 
 ## Detailed description (paste into CWS dashboard)
 
-_Saved in the dashboard with the v4.2.0 package on 2026-10-27._
+_Saved in the dashboard with the v4.2.1 package on 2026-10-28._
 
 ReachOS - Know your reach before you post.
 
@@ -68,7 +68,7 @@ BYOK (Bring Your Own Keys): Deploy your own API server or use the hosted instanc
 
 --- BACKED BY THE SOURCE ---
 
-25 signal predictors, 64 tests. Every signal maps to a prediction head in xAI's open-sourced X algorithm (github.com/xai-org/x-algorithm), and point budgets follow the default weights X publishes in that repo.
+25 signal predictors, 71 tests. Every signal maps to a prediction head in xAI's open-sourced X algorithm (github.com/xai-org/x-algorithm), and point budgets follow the default weights X publishes in that repo.
 
 From X's published weights (October 2026): a reply is worth about 7.5x a like, a quote about 7.5x, a DM share about 7.5x. Copy-link shares carry the highest per-action weight. "Not interested", mute and block are heavy penalties, and a report is the heaviest at -234. Links are not penalized: clicks and time spent after the click are positive signals.
 
