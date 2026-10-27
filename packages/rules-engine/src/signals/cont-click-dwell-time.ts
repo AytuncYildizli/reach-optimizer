@@ -1,5 +1,11 @@
 import type { PostContext, SignalScore } from '@reach/shared-types';
-import { buildSignalScore, hasCuriosityHook, NUMBER_REGEX, URL_REGEX } from './_helpers';
+import {
+  buildSignalScore,
+  hasCuriosityHook,
+  SPECIFIC_NUMBER_REGEX,
+  stripUrls,
+  URL_REGEX,
+} from './_helpers';
 
 export const CONT_CLICK_DWELL_MAX = 6;
 
@@ -30,7 +36,7 @@ export function predictContClickDwellTime(ctx: PostContext): SignalScore {
       {
         name: 'specific_payoff_behind_click',
         weight: 2,
-        test: (c) => URL_REGEX.test(c.text) && NUMBER_REGEX.test(c.text),
+        test: (c) => URL_REGEX.test(c.text) && SPECIFIC_NUMBER_REGEX.test(stripUrls(c.text)),
       },
       {
         // Bait links get a click and an instant bounce; X now weights the

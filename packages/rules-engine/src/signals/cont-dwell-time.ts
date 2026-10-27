@@ -1,5 +1,5 @@
 import type { PostContext, SignalScore } from '@reach/shared-types';
-import { buildSignalScore, hasListShape, NUMBER_REGEX } from './_helpers';
+import { buildSignalScore, hasListShape, SPECIFIC_NUMBER_REGEX, stripUrls } from './_helpers';
 
 export const CONT_DWELL_MAX = 8;
 
@@ -36,7 +36,7 @@ export function predictContDwellTime(ctx: PostContext): SignalScore {
       {
         name: 'concrete_specifics',
         weight: 2,
-        test: (c) => c.charCount > 140 && NUMBER_REGEX.test(c.text),
+        test: (c) => c.charCount > 140 && SPECIFIC_NUMBER_REGEX.test(stripUrls(c.text)),
       },
       {
         name: 'scannable_structure',

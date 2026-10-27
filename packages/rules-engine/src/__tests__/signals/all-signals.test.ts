@@ -392,6 +392,48 @@ describe('v4.2 read-through alignment', () => {
     expect(r.max).toBe(3);
   });
 
+  it('takeaway markers with a colon count as payoff', () => {
+    for (const last of ['Result: 40% fewer bugs.', 'Net: we saved $2k a month.']) {
+      const r = predictDwell(ctx({ text: `We moved CI to self-hosted runners.\n\n${last}` }));
+      expect(r.firedRules, last).toContain('read_through_payoff');
+    }
+  });
+
+  it('a filler or question "So" line is not a payoff', () => {
+    for (const last of ['So many people get this wrong?', 'So yeah.']) {
+      const r = predictDwell(ctx({ text: `Nobody tells you this about pricing.\n\n${last}` }));
+      expect(r.firedRules, last).not.toContain('read_through_payoff');
+    }
+    const real = predictDwell(
+      ctx({ text: 'Pricing pages convert worse with 4 tiers.\n\nSo cut it to two plans.' }),
+    );
+    expect(real.firedRules).toContain('read_through_payoff');
+  });
+
+  it('digits inside a URL are not a specific payoff', () => {
+    const r = predictContClickDwellTime(
+      ctx({ text: 'great read https://x.com/user/status/1850000000000' }),
+    );
+    expect(r.firedRules).not.toContain('specific_payoff_behind_click');
+  });
+
+  it('years and clock times are not concrete specifics', () => {
+    const r = predictContDwellTime(
+      ctx({
+        text:
+          'Thinking a lot about where things are heading in 2026. Woke up at 10am with more questions than answers about the industry and what it means for all of us.',
+      }),
+    );
+    expect(r.firedRules).not.toContain('concrete_specifics');
+  });
+
+  it('"wait for it" video caption is not penalized as an unpaid hook', () => {
+    const r = predictNotDwelled(
+      ctx({ text: 'Wait for it... sound on', hasMedia: true, mediaType: 'video' }),
+    );
+    expect(r.firedRules).not.toContain('hook_without_payoff');
+  });
+
   it('not_interested penalty can reach -12', () => {
     expect(predictNotInterested(ctx({ text: 'ok' })).max).toBe(-12);
   });

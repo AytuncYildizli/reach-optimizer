@@ -102,7 +102,9 @@ describe('ScoreEngine v4', () => {
     const cfg = weights.signals as Record<string, { maxPoints?: number; maxPenalty?: number }>;
     const scores = runAllSignals(c);
     for (const [name, s] of Object.entries(scores)) {
-      expect(s.max, name).toBe(cfg[name]!.maxPoints ?? cfg[name]!.maxPenalty);
+      const budget = cfg[name];
+      expect(budget, `${name} missing from weights.json`).toBeDefined();
+      expect(s.max, name).toBe(budget?.maxPoints ?? budget?.maxPenalty);
     }
   });
 
