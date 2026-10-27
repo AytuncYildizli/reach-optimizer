@@ -7,7 +7,7 @@ export default function PrivacyPage() {
       <p style={{ color: '#71767b', marginBottom: 32 }}>ReachOS — Open-source Reach Optimizer. Last updated: October 27, 2026.</p>
 
       <h2 style={{ fontSize: 20, marginTop: 24 }}>How It Works</h2>
-      <p style={{ color: '#b0b3b8', lineHeight: 1.8 }}>ReachOS scores your tweets locally using 25 signal predictors that run entirely on your device. Signing in to a ReachOS server and adding your own Anthropic key are both optional. ReachOS is fully open source and self-hostable.</p>
+      <p style={{ color: '#b0b3b8', lineHeight: 1.8 }}>ReachOS scores your tweets locally using 25 signal predictors that run entirely on your device. Signing in to a ReachOS server and adding your own Anthropic key are both optional. A reach number is shown only when a model fit on your own older posts beats your usual reach on newer ones. ReachOS is fully open source and self-hostable.</p>
 
       <h2 style={{ fontSize: 20, marginTop: 24 }}>What We Collect</h2>
       <ul style={{ color: '#b0b3b8', lineHeight: 1.8 }}>

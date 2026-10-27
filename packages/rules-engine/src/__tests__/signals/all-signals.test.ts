@@ -242,6 +242,29 @@ describe('negative signals', () => {
     expect(spam.score).toBeLessThan(-3);
   });
 
+  it('automated spam markers do not fire on ordinary long words', () => {
+    const normal = predictReport(
+      ctx({ text: 'Building something meaningful with concrete examples today.' }),
+    );
+    expect(normal.firedRules).not.toContain('automated_spam_markers');
+    expect(normal.score).toBe(0);
+  });
+
+  it('automated spam markers still fire on shouts, bait, emails, and bang runs', () => {
+    expect(
+      predictReport(ctx({ text: 'MASSIVE GIVEAWAY starts now for real followers' })).firedRules,
+    ).toContain('automated_spam_markers');
+    expect(
+      predictReport(ctx({ text: 'Please retweet + follow and you win' })).firedRules,
+    ).toContain('automated_spam_markers');
+    expect(
+      predictReport(ctx({ text: 'Write a@b.co and also c@d.co today' })).firedRules,
+    ).toContain('automated_spam_markers');
+    expect(predictReport(ctx({ text: 'Look at this!!!!!' })).firedRules).toContain(
+      'automated_spam_markers',
+    );
+  });
+
   it('ad_disclosure penalizes promo language without disclosure', () => {
     const undisclosed = predictAdDisclosure(
       ctx({ text: 'Use code TUNC10 for a discount on my favourite headphones — link in bio.' }),

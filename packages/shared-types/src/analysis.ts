@@ -55,15 +55,27 @@ export interface WhatIfScenario {
 }
 
 export interface ReachForecast {
-  predictedReach: number;
-  reachLow: number;
-  reachHigh: number;
-  vsAverage: number;
-  replyProbability: number;
-  bookmarkProbability: number;
-  viralChance: number;
+  /**
+   * `calibrated` only when this account's model beat its rolling-median
+   * reach on newer held-out posts. Otherwise no reach number is shown.
+   */
+  status: 'calibrated' | 'uncalibrated';
+  /** Point estimate. Null when uncalibrated. */
+  predictedReach: number | null;
+  /** Lower end of the 80% interval. Null when uncalibrated. */
+  reachLow: number | null;
+  /** Upper end of the 80% interval. Null when uncalibrated. */
+  reachHigh: number | null;
+  vsAverage: number | null;
+  /** Predicted engagement rate (0–1). Null when that model did not pass. */
+  engagementRate: number | null;
+  engagementLow: number | null;
+  engagementHigh: number | null;
   scenarios: WhatIfScenario[];
+  /** Holdout coverage of the 80% interval. 0 when uncalibrated. */
   confidence: number;
   dataPoints: number;
   isEstimate: boolean;
+  /** Why a number is or is not shown. */
+  reason: string;
 }

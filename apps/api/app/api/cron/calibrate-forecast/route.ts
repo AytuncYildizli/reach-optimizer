@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@lib/db';
 import { verifyCronAuth } from '@lib/cron-auth';
+import { runBacktest, type HistoryPost } from '@reach/rules-engine';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -8,116 +10,92 @@ export const maxDuration = 60;
 /**
  * GET /api/cron/calibrate-forecast
  *
- * Compares predicted reach vs actual views for tracked tweets,
- * computes a per-user correction factor, and stores it for the
- * forecast engine to self-correct over time.
- *
- * Runs daily after fetch-metrics and learn-weights.
+ * Fits the same per-account ridge model the offline backtest uses.
+ * A numeric forecast is stored only when the time-ordered holdout beats
+ * that account's rolling-median reach. The old global multiplier
+ * correction is not written: scaling a non-predictive score does not
+ * make it a forecast.
  */
 export async function GET(request: NextRequest) {
   const denied = verifyCronAuth(request);
   if (denied) return denied;
   try {
-    console.log('[calibrate-forecast] Starting forecast calibration...');
-
-    // 1. Find all tracked tweets that have both predictedReach AND actual views
     const tweets = await prisma.trackedTweet.findMany({
-      where: {
-        predictedReach: { not: null },
-        metrics: { some: { views: { gt: 0 } } },
-      },
+      where: { metrics: { some: { views: { gt: 0 } } } },
       include: {
-        metrics: {
-          orderBy: { measuredAt: 'desc' },
-          take: 1,
-        },
+        metrics: { orderBy: { measuredAt: 'desc' }, take: 1 },
       },
     });
 
-    if (tweets.length < 3) {
-      console.log(`[calibrate-forecast] Only ${tweets.length} tweets with predictions+metrics. Need 3+. Skipping.`);
-      return NextResponse.json({
-        success: true,
-        message: `Not enough data yet (${tweets.length}/3 minimum). Skipping calibration.`,
-        tweetsAnalyzed: tweets.length,
-      });
-    }
-
-    // 2. Group by user for per-user calibration
-    const byUser = new Map<string, Array<{ predicted: number; actual: number }>>();
-    const globalPairs: Array<{ predicted: number; actual: number }> = [];
-
+    const byUser = new Map<string, HistoryPost[]>();
     for (const tweet of tweets) {
-      if (!tweet.predictedReach || tweet.metrics.length === 0) continue;
-      const actual = tweet.metrics[0].views;
-      if (actual <= 0) continue;
-
-      const pair = { predicted: tweet.predictedReach, actual };
-      globalPairs.push(pair);
-
-      if (tweet.userId) {
-        if (!byUser.has(tweet.userId)) byUser.set(tweet.userId, []);
-        byUser.get(tweet.userId)!.push(pair);
-      }
+      if (!tweet.userId || !tweet.content) continue;
+      const metric = tweet.metrics[0];
+      if (!metric || metric.views <= 0) continue;
+      const post: HistoryPost = {
+        id: tweet.id,
+        createdAt: tweet.postedAt.toISOString(),
+        text: tweet.content,
+        kind: 'original',
+        lang: /[ğüşıöçĞÜŞİÖÇ]/.test(tweet.content) ? 'tr' : 'en',
+        mediaType: null,
+        impressions: metric.views,
+        likes: metric.likes,
+        retweets: metric.retweets,
+        replies: metric.replies,
+        quotes: metric.quotes,
+        bookmarks: metric.bookmarks,
+        followerCount: null,
+      };
+      const list = byUser.get(tweet.userId) ?? [];
+      list.push(post);
+      byUser.set(tweet.userId, list);
     }
 
-    // 3. Compute global calibration
-    const globalCalibration = computeCalibration(globalPairs);
-    console.log(
-      `[calibrate-forecast] Global: ${globalPairs.length} pairs, ` +
-      `correction=${globalCalibration.correctionFactor.toFixed(3)}, ` +
-      `avgError=${globalCalibration.meanAbsoluteErrorPct.toFixed(1)}%`,
-    );
+    const asOf = new Date();
+    const users: Array<{
+      userId: string;
+      status: string;
+      eligiblePosts: number;
+      impressionsSpearman: number | null;
+      baselineSpearman: number | null;
+      impressionsMae: number | null;
+      baselineMae: number | null;
+      engagementSpearman: number | null;
+      reason: string;
+    }> = [];
 
-    // 4. Compute per-user calibration and save
-    let usersUpdated = 0;
-    const perUserResults: Record<string, {
-      pairs: number;
-      correctionFactor: number;
-      meanAbsoluteErrorPct: number;
-    }> = {};
-
-    for (const [userId, pairs] of byUser) {
-      if (pairs.length < 3) continue; // need at least 3 data points
-
-      const calibration = computeCalibration(pairs);
-
+    for (const [userId, posts] of byUser) {
+      const report = runBacktest(posts, { timezone: 'UTC', asOf, minAgeDays: 3 });
       await prisma.user.update({
         where: { id: userId },
         data: {
-          forecastCalibration: {
-            correctionFactor: calibration.correctionFactor,
-            meanAbsoluteErrorPct: calibration.meanAbsoluteErrorPct,
-            dataPoints: pairs.length,
-            lastCalibratedAt: new Date().toISOString(),
-          },
+          forecastCalibration: JSON.parse(JSON.stringify({
+            correctionFactor: null,
+            reachModel: report.snapshot,
+          })) as Prisma.InputJsonValue,
         },
       });
-
-      usersUpdated++;
-      perUserResults[userId] = {
-        pairs: pairs.length,
-        correctionFactor: calibration.correctionFactor,
-        meanAbsoluteErrorPct: calibration.meanAbsoluteErrorPct,
-      };
-
-      console.log(
-        `[calibrate-forecast] User ${userId}: ${pairs.length} pairs, ` +
-        `correction=${calibration.correctionFactor.toFixed(3)}, ` +
-        `avgError=${calibration.meanAbsoluteErrorPct.toFixed(1)}%`,
-      );
+      const impressions = report.snapshot.validation.impressions;
+      const engagement = report.snapshot.validation.engagement;
+      users.push({
+        userId,
+        status: report.snapshot.status,
+        eligiblePosts: report.eligiblePosts,
+        impressionsSpearman: impressions.spearman,
+        baselineSpearman: impressions.baselineSpearman,
+        impressionsMae: impressions.mae,
+        baselineMae: impressions.baselineMae,
+        engagementSpearman: engagement.spearman,
+        reason: report.snapshot.reason,
+      });
     }
-
-    console.log(
-      `[calibrate-forecast] Complete. ${usersUpdated} users calibrated from ${globalPairs.length} total predictions.`,
-    );
 
     return NextResponse.json({
       success: true,
-      global: globalCalibration,
-      tweetsAnalyzed: globalPairs.length,
-      usersCalibrated: usersUpdated,
-      perUser: perUserResults,
+      usersCalibrated: users.filter((user) => user.status === 'calibrated').length,
+      usersChecked: users.length,
+      users,
     });
   } catch (error) {
     console.error('[calibrate-forecast] Cron failed:', error);
@@ -126,39 +104,4 @@ export async function GET(request: NextRequest) {
       { status: 500 },
     );
   }
-}
-
-/**
- * Compute calibration metrics from prediction/actual pairs.
- *
- * correctionFactor: multiply predictions by this to center them on actuals.
- *   - 1.0 = predictions are perfectly calibrated
- *   - 0.7 = predictions are 30% too high (scale them down)
- *   - 1.4 = predictions are 30% too low (scale them up)
- *
- * Uses median ratio (actual/predicted) to be robust against outliers.
- */
-function computeCalibration(pairs: Array<{ predicted: number; actual: number }>) {
-  // Correction factor: median of (actual / predicted)
-  const ratios = pairs
-    .filter(p => p.predicted > 0)
-    .map(p => p.actual / p.predicted);
-
-  ratios.sort((a, b) => a - b);
-  const median = ratios.length % 2 === 0
-    ? (ratios[ratios.length / 2 - 1] + ratios[ratios.length / 2]) / 2
-    : ratios[Math.floor(ratios.length / 2)];
-
-  // Clamp correction factor to prevent wild swings
-  const correctionFactor = Math.max(0.3, Math.min(3.0, median));
-
-  // Mean absolute percentage error
-  const errors = pairs
-    .filter(p => p.actual > 0)
-    .map(p => Math.abs(p.predicted - p.actual) / p.actual * 100);
-  const meanAbsoluteErrorPct = errors.length > 0
-    ? errors.reduce((sum, e) => sum + e, 0) / errors.length
-    : 0;
-
-  return { correctionFactor, meanAbsoluteErrorPct, dataPoints: pairs.length };
 }

@@ -43,11 +43,11 @@ Would love your feedback on the scoring model — we're actively adding new rule
 **Body:**
 Hey r/SideProject! I just launched ReachOS — it's basically "Grammarly for reach."
 
-It scores your tweets against 25 signal predictors from X's actual open-sourced algorithm, then predicts how many impressions you'll get. The coolest part is What-If Scenarios — it shows stuff like "add an image and your reach goes up 35%."
+It scores your tweets against 25 signal predictors from X's open-sourced algorithm. A reach number is shown only after a model trained on your own posts beats your usual reach; otherwise the forecast stays uncalibrated.
 
 Some stats:
-- 36 scoring rules (hook quality, structure, engagement triggers, penalties)
-- 132 passing tests
+- 25 signals, 81 sub-rules (hook, structure, engagement, penalties)
+- 88 passing tests
 - Chrome Web Store: live
 - Fully open source (MIT): github.com/AytuncYildizli/reach-optimizer
 - No account needed, runs locally
@@ -58,7 +58,7 @@ Would love feedback, especially on scoring accuracy. What would you add to the r
 
 ### r/webdev
 
-**Title:** Show r/webdev: Built a Chrome extension with 36 real-time scoring rules using Shadow DOM + MutationObserver
+**Title:** Show r/webdev: Built a Chrome extension with 25 real-time scoring signals using Shadow DOM + MutationObserver
 
 **Body:**
 Just launched an open-source Chrome extension that overlays a scoring panel on X.com. Some interesting technical challenges:
@@ -87,10 +87,10 @@ Some things it catches:
 - 3+ hashtags = ~40% engagement drop
 - Tweets without questions or CTAs get buried
 - AI-sounding language gets penalized by the algorithm
-- Images get a confirmed 2x algorithmic boost
+- A flat "images get 2x reach" claim is not shown; media is just a checklist item unless your own posts support a change
 - Replies to your own tweet are worth 150x a like
 
-It also predicts your reach and shows "what if" scenarios — like what happens if you add an image or remove a link.
+It does not show a reach number until a per-account model beats that account's usual reach on held-out posts.
 
 Free on Chrome Web Store, open source on GitHub. No account needed.
 
