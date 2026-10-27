@@ -149,6 +149,36 @@ export function isWallOfText(text: string): boolean {
   return trimmed.length > 300 && !hasParagraphBreaks(trimmed);
 }
 
+const PAYOFF_MARKERS =
+  /^(so|that'?s why|which means|the lesson|lesson|the takeaway|takeaway|bottom line|tl;?dr|in short|net:|result:|the fix|the answer|moral)\b/i;
+
+const CURIOSITY_HOOK =
+  /\b(you won'?t believe|wait (?:for|till|until) (?:it|the end)|the (?:secret|trick) is|here'?s what happened|nobody tells you|this changed everything)\b/i;
+
+function lastNonEmptyLine(text: string): string {
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  return lines[lines.length - 1] ?? '';
+}
+
+// X's retrieval model (Oct 2026) is trained to surface posts people read all the way through.
+// A multi-line post that lands a conclusion on its final line rewards readers
+// who reach the end.
+export function hasReadThroughPayoff(text: string): boolean {
+  const lines = text.split('\n').filter((l) => l.trim());
+  if (lines.length < 2) return false;
+  return PAYOFF_MARKERS.test(lastNonEmptyLine(text));
+}
+
+export function hasCuriosityHook(text: string): boolean {
+  return CURIOSITY_HOOK.test(text);
+}
+
+// A curiosity hook that the post itself never pays off: readers bail before
+// the end, which reads as a scroll-past to the ranker.
+export function hasHookWithoutPayoff(text: string): boolean {
+  return CURIOSITY_HOOK.test(text) && !hasReadThroughPayoff(text) && !URL_REGEX.test(text);
+}
+
 export function hasGenericOpener(text: string): boolean {
   const openers = [
     'so today',

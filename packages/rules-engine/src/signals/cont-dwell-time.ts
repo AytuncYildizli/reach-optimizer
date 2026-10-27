@@ -1,7 +1,7 @@
 import type { PostContext, SignalScore } from '@reach/shared-types';
-import { buildSignalScore } from './_helpers';
+import { buildSignalScore, hasListShape, NUMBER_REGEX } from './_helpers';
 
-export const CONT_DWELL_MAX = 4;
+export const CONT_DWELL_MAX = 8;
 
 export function predictContDwellTime(ctx: PostContext): SignalScore {
   return buildSignalScore(ctx, {
@@ -33,8 +33,18 @@ export function predictContDwellTime(ctx: PostContext): SignalScore {
           c.charCount > 400 ||
           /\b(thread|breakdown|deep dive|long post)\b/i.test(c.text),
       },
+      {
+        name: 'concrete_specifics',
+        weight: 2,
+        test: (c) => c.charCount > 140 && NUMBER_REGEX.test(c.text),
+      },
+      {
+        name: 'scannable_structure',
+        weight: 2,
+        test: (c) => c.charCount > 140 && hasListShape(c.text),
+      },
     ],
     suggestionWhenLow:
-      'Add a second paragraph with a payoff so dwell time keeps accumulating.',
+      'Add concrete numbers or a short list so time spent on the post keeps accumulating.',
   });
 }

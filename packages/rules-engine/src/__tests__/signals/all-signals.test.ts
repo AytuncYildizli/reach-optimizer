@@ -98,7 +98,8 @@ describe('positive signals', () => {
       ctx({ text: "Here's why TypeScript won. Read the full breakdown → https://example.com/article" }),
     );
     expect(withLink.score).toBeGreaterThan(baseline.score);
-    expect(withLink.score).toBeGreaterThanOrEqual(5);
+    expect(withLink.score).toBeGreaterThanOrEqual(3);
+    expect(withLink.max).toBe(4);
   });
 
   it('click never returns a negative score for a link', () => {
@@ -316,6 +317,83 @@ describe('curiosity signals', () => {
     );
     expect(onBrand.score).toBeGreaterThan(drift.score);
     expect(onBrand.score).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('v4.2 read-through alignment', () => {
+  it('dwell rewards a takeaway on the final line', () => {
+    const noPayoff = predictDwell(
+      ctx({ text: 'We rewrote our onboarding flow last month.\n\nSignups went up and churn went down.' }),
+    );
+    const payoff = predictDwell(
+      ctx({
+        text:
+          'We rewrote our onboarding flow last month.\n\nSignups went up and churn went down.\n\nThe lesson: cut steps before adding features.',
+      }),
+    );
+    expect(payoff.firedRules).toContain('read_through_payoff');
+    expect(noPayoff.firedRules).not.toContain('read_through_payoff');
+    expect(payoff.score).toBeGreaterThan(noPayoff.score);
+    expect(payoff.max).toBe(10);
+  });
+
+  it('cont_dwell_time rewards concrete numbers and scannable lists', () => {
+    const vague = predictContDwellTime(
+      ctx({ text: 'Some thoughts on growing a product. It takes a while and you need patience and focus to get there.' }),
+    );
+    const specific = predictContDwellTime(
+      ctx({
+        text:
+          'How we grew to 12,000 users in 90 days:\n\n1. Shipped a small feature every week\n2. Replied to every single user email\n3. Cut pricing from $29 to $9 per month',
+      }),
+    );
+    expect(specific.firedRules).toEqual(
+      expect.arrayContaining(['concrete_specifics', 'scannable_structure']),
+    );
+    expect(specific.score).toBeGreaterThan(vague.score);
+    expect(specific.max).toBe(8);
+  });
+
+  it('cont_click_dwell_time rewards specific links and withholds credit from bait links', () => {
+    const specific = predictContClickDwellTime(
+      ctx({ text: 'Full case study: how we cut AWS costs 40% in 2 weeks https://example.com/aws' }),
+    );
+    const bait = predictContClickDwellTime(
+      ctx({ text: "You won't believe what happened next https://example.com/x" }),
+    );
+    expect(specific.firedRules).toEqual(
+      expect.arrayContaining(['specific_payoff_behind_click', 'no_bait_link']),
+    );
+    expect(bait.firedRules).not.toContain('no_bait_link');
+    expect(specific.score).toBeGreaterThan(bait.score);
+    expect(specific.max).toBe(6);
+  });
+
+  it('not_dwelled penalizes a hook the post never pays off', () => {
+    const unpaid = predictNotDwelled(
+      ctx({ text: 'Nobody tells you this about hiring your first engineer.' }),
+    );
+    const paid = predictNotDwelled(
+      ctx({
+        text:
+          'Nobody tells you this about hiring your first engineer.\n\nSo hire for ownership, not for the resume.',
+      }),
+    );
+    expect(unpaid.firedRules).toContain('hook_without_payoff');
+    expect(paid.firedRules).not.toContain('hook_without_payoff');
+    expect(unpaid.max).toBe(-6);
+  });
+
+  it('vqv is a small budget now that X weights it at 0', () => {
+    const r = predictVqv(
+      ctx({ text: 'Watch this 30 second demo, sound on', hasMedia: true, mediaType: 'video' }),
+    );
+    expect(r.score).toBeLessThanOrEqual(3);
+    expect(r.max).toBe(3);
+  });
+
+  it('not_interested penalty can reach -12', () => {
+    expect(predictNotInterested(ctx({ text: 'ok' })).max).toBe(-12);
   });
 });
 

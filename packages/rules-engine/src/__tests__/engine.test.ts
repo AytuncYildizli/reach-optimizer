@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ScoreEngine } from '../engine';
 import weights from '../config/weights.json';
+import { runAllSignals } from '../signals';
 import { SIGNAL_NAMES } from '@reach/shared-types';
 
 const engine = new ScoreEngine();
@@ -94,6 +95,15 @@ describe('ScoreEngine v4', () => {
     });
     expect(great.score).toBeGreaterThan(dead.score);
     expect(great.score).toBeGreaterThanOrEqual(50);
+  });
+
+  it('signal constants match weights.json budgets', () => {
+    const c = engine.buildContext({ text: 'x'.repeat(50), platform: 'x', isThread: false, hasMedia: true, mediaType: 'video' });
+    const cfg = weights.signals as Record<string, { maxPoints?: number; maxPenalty?: number }>;
+    const scores = runAllSignals(c);
+    for (const [name, s] of Object.entries(scores)) {
+      expect(s.max, name).toBe(cfg[name]!.maxPoints ?? cfg[name]!.maxPenalty);
+    }
   });
 
   it('weights.json is on a v4.x line with baseScore 30', () => {

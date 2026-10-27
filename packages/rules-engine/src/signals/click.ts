@@ -1,11 +1,13 @@
 import type { PostContext, SignalScore } from '@reach/shared-types';
 import { buildSignalScore, URL_REGEX } from './_helpers';
 
-export const CLICK_MAX = 8;
+export const CLICK_MAX = 4;
 
 // X's published algorithm scores URL clicks as a POSITIVE signal. Links are no
 // longer penalized. This predictor rewards posts that include a link with a
-// descriptive anchor and a curiosity gap.
+// descriptive anchor and a curiosity gap. X cut the raw click weight (0.4 -> 0.3)
+// while turning on post-click dwell, so the click itself is a small budget;
+// value behind the click is scored in cont_click_dwell_time.
 export function predictClick(ctx: PostContext): SignalScore {
   const text = ctx.text;
   const hasUrl = URL_REGEX.test(text);
@@ -22,12 +24,12 @@ export function predictClick(ctx: PostContext): SignalScore {
     rules: [
       {
         name: 'has_link',
-        weight: 3,
+        weight: 1,
         test: () => hasUrl,
       },
       {
         name: 'descriptive_anchor',
-        weight: 2,
+        weight: 1,
         test: () =>
           hasUrl &&
           (afterUrl.trim().length > 0 ||
@@ -37,7 +39,7 @@ export function predictClick(ctx: PostContext): SignalScore {
       },
       {
         name: 'curiosity_gap',
-        weight: 2,
+        weight: 1,
         test: () =>
           hasUrl &&
           /(\?$|\.\.\.\s*$|→\s*$|here'?s why|the reason|what happened|find out|you won'?t believe)/i.test(
