@@ -97,6 +97,73 @@ export function fitRidgeOnStandardized(Xz: number[][], y: number[], lambda: numb
   return { weights, intercept: yMean };
 }
 
+/** Same ridge, with a non-negative weight per row. Used by Huber IRLS. */
+export function fitWeightedRidgeOnStandardized(
+  Xz: number[][],
+  y: number[],
+  weights: number[],
+  lambda: number,
+): LinearFit | null {
+  const n = y.length;
+  if (n === 0) return null;
+  const p = Xz[0]?.length ?? 0;
+  let wSum = 0;
+  let ySum = 0;
+  for (let i = 0; i < n; i++) {
+    const w = weights[i] ?? 0;
+    if (!(w > 0)) continue;
+    wSum += w;
+    ySum += w * y[i]!;
+  }
+  if (!(wSum > 0)) return null;
+  const yMean = ySum / wSum;
+  if (p === 0) return { weights: [], intercept: yMean };
+
+  const G = Array.from({ length: p }, () => new Array<number>(p).fill(0));
+  const g = new Array<number>(p).fill(0);
+  for (let i = 0; i < n; i++) {
+    const w = weights[i] ?? 0;
+    if (!(w > 0)) continue;
+    const yc = y[i]! - yMean;
+    const row = Xz[i]!;
+    for (let a = 0; a < p; a++) {
+      g[a] = g[a]! + w * row[a]! * yc;
+      const ga = G[a]!;
+      for (let b = a; b < p; b++) ga[b] = ga[b]! + w * row[a]! * row[b]!;
+    }
+  }
+  for (let a = 0; a < p; a++) {
+    for (let b = 0; b < a; b++) G[a]![b] = G[b]![a]!;
+    G[a]![a] = G[a]![a]! + lambda;
+  }
+  const solved = solveLinear(G, g);
+  if (!solved) return null;
+  return { weights: solved, intercept: yMean };
+}
+
+/**
+ * Ridge whose squared error is replaced by Huber loss (delta on the target
+ * scale). Coefficients are still a linear model. Delta is fixed at 1 so it
+ * is not tuned on a holdout.
+ */
+export function fitHuberRidge(X: number[][], y: number[], lambda: number, delta = 1): RidgeModel | null {
+  const { mean, std } = columnStats(X);
+  const Xz = applyStandardize(X, mean, std);
+  let fit = fitRidgeOnStandardized(Xz, y, lambda);
+  if (!fit) return null;
+  for (let iter = 0; iter < 15; iter++) {
+    const pred = dotPredict(Xz, fit.weights, fit.intercept);
+    const w = y.map((value, i) => {
+      const abs = Math.abs(value - pred[i]!);
+      return abs <= delta || abs === 0 ? 1 : delta / abs;
+    });
+    const next = fitWeightedRidgeOnStandardized(Xz, y, w, lambda);
+    if (!next) break;
+    fit = next;
+  }
+  return { ...fit, mean, std };
+}
+
 export function dotPredict(Xz: number[][], weights: number[], intercept: number): number[] {
   return Xz.map((row) => {
     let s = intercept;

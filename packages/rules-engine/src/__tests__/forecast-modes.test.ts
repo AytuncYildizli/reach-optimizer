@@ -148,6 +148,8 @@ describe('quote and follower features', () => {
     expect(constant.protocol.gate).toContain('raw MAE');
     expect(constant.protocol.gate).toContain('do not decide');
     expect(constant.featuresUsed).not.toContain('q_rel_imp');
+    expect(constant.featuresUsed).not.toContain('log_ewma_gap');
+    expect(constant.featuresUsed).not.toContain('len_mid');
   });
 
   it('uses quoted impressions only when the toggle is on', () => {

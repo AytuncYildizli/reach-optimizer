@@ -4,6 +4,7 @@ import { parsePostsJson, type HistoryPost } from './dataset';
 import { runBacktest, type BacktestReport, type TargetReport } from './model';
 import { runPooledBacktest, type PooledBacktestReport } from './pooled';
 import { runSnapshotBacktest, type SnapshotBacktestReport } from './snapshots';
+import { runStudy, type StudyReport } from './study';
 
 function usage(): void {
   console.error(`Usage: pnpm --filter @reach/rules-engine backtest -- <posts.json> [more.json ...] [options]
@@ -20,6 +21,7 @@ Options:
   --pooled                Fit one model across accounts. Implied by more than one account.
   --quoted-impressions    Include fetch-time quoted impressions (partly leaky). Off by default.
   --snapshots <file>      Early-engagement rows {id, age_h or target, metrics}. Predicts 7d from 1h and 6h.
+  --study                 Ablation menu. Winner is chosen on a train-only slice; the holdout is scored once.
 `);
 }
 
@@ -153,6 +155,36 @@ function printPooled(report: PooledBacktestReport): void {
   console.log(`\nprotocol ${JSON.stringify(report.protocol)}`);
 }
 
+function pct(value: number | null): string {
+  if (value == null || Number.isNaN(value)) return 'n/a';
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function printStudy(report: StudyReport): void {
+  console.log('ReachOS ablation (train-internal select slice; holdout sealed until the winner is locked)');
+  console.log('config                      select n   Spearman    MAE gain   vs EWMA MAE');
+  for (const row of report.table) {
+    const mark = row.config === report.chosen ? '*' : ' ';
+    console.log(
+      `${mark} ${row.config.padEnd(26)} ${String(row.selectN).padStart(8)}   ${n(row.spearman, 3).padStart(8)}   ${pct(row.maeGain).padStart(8)}   ${compact(row.ewmaMae).padStart(8)}  ${row.detail}`,
+    );
+  }
+  const holdout = report.holdout;
+  console.log(`\nChosen on the select slice: ${report.chosen}`);
+  console.log(`Holdout of that config only: n=${holdout.testN} train=${holdout.trainN} gate=${holdout.passed ? 'PASS' : 'FAIL'}`);
+  console.log(`  ${holdout.reason}`);
+  console.log(
+    `  Spearman ${n(holdout.spearman, 3)} vs median ${n(holdout.baselineSpearman, 3)}  MAE ${compact(holdout.mae)} vs ${compact(holdout.baselineMae)} (${pct(holdout.maeGain)})  log-MAE ${n(holdout.maeLog, 3)} vs ${n(holdout.baselineMaeLog, 3)}`,
+  );
+  console.log(`  EWMA competitor Spearman ${n(holdout.ewmaSpearman, 3)} MAE ${compact(holdout.ewmaMae)} (reported, not the gate)`);
+  for (const account of holdout.perAccount) {
+    console.log(
+      `  ${account.account.padEnd(16)} n=${String(account.testN).padStart(4)}  ρ ${n(account.spearman, 3).padStart(7)}  base ρ ${n(account.baselineSpearman, 3).padStart(7)}  MAE gain ${pct(account.maeGain).padStart(7)}`,
+    );
+  }
+  console.log(`protocol ${JSON.stringify(report.protocol)}`);
+}
+
 function printSnapshots(report: SnapshotBacktestReport): void {
   console.log('ReachOS early-engagement backtest (7d from 1h and 6h; gate is log-MAE vs 1h × median multiplier)');
   console.log(`modeled ${report.modeledPosts}  features ${report.featuresUsed.join(', ') || 'none'}`);
@@ -196,8 +228,22 @@ const window = flags.window ? Number(flags.window) : undefined;
 const minHistory = flags['min-history'] ? Number(flags['min-history']) : undefined;
 const quotedImpressions = flags['quoted-impressions'] === 'true';
 
-let report: BacktestReport | PooledBacktestReport | SnapshotBacktestReport;
-if (flags.snapshots) {
+let report: BacktestReport | PooledBacktestReport | SnapshotBacktestReport | StudyReport;
+const posts: HistoryPost[] = [];
+for (const file of files) {
+  const fallback = files.length === 1 ? (flags.account ?? accountFromFilename(file)) : accountFromFilename(file);
+  posts.push(...parsePostsJson(readJson(file), fallback));
+}
+if (flags.study === 'true') {
+  report = runStudy(posts, {
+    timezone: flags.timezone,
+    asOf,
+    minAgeDays,
+    window,
+    minHistory,
+  });
+  printStudy(report);
+} else if (flags.snapshots) {
   report = runSnapshotBacktest(readJson(flags.snapshots), {
     window,
     minHistory,
@@ -205,11 +251,6 @@ if (flags.snapshots) {
   });
   printSnapshots(report);
 } else {
-  const posts: HistoryPost[] = [];
-  for (const file of files) {
-    const fallback = files.length === 1 ? (flags.account ?? accountFromFilename(file)) : accountFromFilename(file);
-    posts.push(...parsePostsJson(readJson(file), fallback));
-  }
   const accounts = new Set(posts.map((post) => post.account).filter((account): account is string => !!account));
   const pooled = flags.pooled === 'true' || accounts.size > 1;
   if (pooled) {

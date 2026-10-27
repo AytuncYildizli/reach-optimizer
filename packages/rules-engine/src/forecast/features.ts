@@ -36,6 +36,24 @@ export const TEXT_FEATURE_KEYS = [
   'q_self',
 ] as const;
 
+/**
+ * Opt-in columns. Hour/day sine waves, hours since the previous post, posts
+ * in the last 24h, has_question, language, and quoted-author followers are
+ * already in the base set. These add the coarser versions the ablation asked
+ * for. They stay out of the default model until a sealed holdout says otherwise.
+ */
+export const EXTENDED_FEATURE_KEYS = [
+  'len_mid',
+  'len_long',
+  'has_number',
+  'log1p_hook',
+  'is_weekend',
+  'hour_block',
+  'q_rel_author',
+  'log_ewma_gap',
+  'is_self_reply',
+] as const;
+
 export interface FeatureListOptions {
   /**
    * Include fetch-time quoted impressions (`q_rel_imp`).
@@ -43,13 +61,16 @@ export interface FeatureListOptions {
    * exists, so the quote itself has already added views.
    */
   quotedImpressions?: boolean;
+  /** Length buckets, hook length, weekend, type EWMA, quote relative size. */
+  extended?: boolean;
 }
 
 export function orderedFeatureNames(options?: FeatureListOptions): string[] {
   const text = options?.quotedImpressions
     ? TEXT_FEATURE_KEYS
     : TEXT_FEATURE_KEYS.filter((key) => key !== 'q_rel_imp');
-  return [...SIGNAL_NAMES.map((name) => `sig_${name}`), ...text];
+  const extra = options?.extended ? EXTENDED_FEATURE_KEYS : [];
+  return [...SIGNAL_NAMES.map((name) => `sig_${name}`), ...text, ...extra];
 }
 
 const DOW: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
@@ -164,6 +185,7 @@ export interface FeatureParts {
   /** Known at compose time. Fetch-time quoted impressions stay behind the toggle. */
   quote?: QuoteParts | null;
   quotedImpressions?: boolean;
+  selfReply?: boolean;
 }
 
 export function buildFeatureRecord(parts: FeatureParts): Record<string, number> {
@@ -207,6 +229,16 @@ export function buildFeatureRecord(parts: FeatureParts): Record<string, number> 
     quote?.authorFollowers != null ? finite(Math.log1p(Math.max(0, quote.authorFollowers))) : 0;
   rec.q_log_age_h = quote?.ageHours != null ? finite(Math.log1p(Math.max(0, quote.ageHours))) : 0;
   rec.q_self = quote?.selfQuote ? 1 : 0;
+  const firstLine = text.split('\n')[0] ?? '';
+  rec.log1p_hook = finite(Math.log1p(firstLine.trim().length));
+  rec.has_number = rec.any_number_count > 0 ? 1 : 0;
+  rec.len_mid = text.length >= 80 && text.length < 180 ? 1 : 0;
+  rec.len_long = text.length >= 180 ? 1 : 0;
+  rec.is_weekend = dow === 0 || dow === 6 ? 1 : 0;
+  rec.hour_block = hour < 6 ? 0 : hour < 12 ? 1 : hour < 18 ? 2 : 3;
+  rec.q_rel_author = 0;
+  rec.log_ewma_gap = 0;
+  rec.is_self_reply = parts.selfReply ? 1 : 0;
   for (const key of Object.keys(rec)) rec[key] = finite(rec[key]!);
   return rec;
 }

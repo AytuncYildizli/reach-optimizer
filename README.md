@@ -128,6 +128,12 @@ The pre-registered gate for this mode is **log-MAE**, at least 5% lower than tha
 pnpm --filter @reach/rules-engine backtest -- --snapshots snapshots.json
 ```
 
+`--study` scores a fixed menu on the newest 25% of each account's training span, locks one winner, then scores the newest 30% once. The menu is the current relative-lift ridge, an absolute log target, shrink `baseline × exp(k · lift)` with k chosen inside the fit span, Huber, depth-2 gradient boosting, extra text/schedule/quote-relative/EWMA features, self-replies, and a type EWMA competitor. The 5% raw-MAE gate is the same one. On the six-account files every row lost to the rolling median on that inner slice, Huber lost least, and its sealed holdout also failed (−0.4% MAE). The default model is unchanged. The type EWMA was worse than the rolling median, so it is not a stronger baseline on these files. The open lever is a 1h/6h impression snapshot: caption, clock, and quote features do not move raw error by 5% once the account's recent median is known.
+
+```bash
+pnpm --filter @reach/rules-engine backtest -- a.json b.json --study --timezone Europe/Istanbul
+```
+
 `posts.json` is an array of posts with `public_metrics` (the X API post shape). Replies, posts younger than 3 days, captions with no scorable text, and duplicate captions are dropped from the fit. Posts from the last 3 days stay in the live recency and topic context; their impressions are still moving, so they stay out of the rolling baseline. The daily calibrate cron fits the per-account model for tracked tweets and stores it on the user. The extension reads that snapshot, refreshing account health when the cache is missing, and shows the checklist when no model has passed.
 
 ## Quick Start
@@ -339,15 +345,16 @@ reach-optimizer/
 ## Running Tests
 
 ```bash
-# Package tests (98 passing: 85 rules-engine + 13 ai-checks)
+# Package tests (104 passing: 91 rules-engine + 13 ai-checks)
 pnpm test
 
-# Rules engine only (85 tests)
+# Rules engine only (91 tests)
 pnpm --filter @reach/rules-engine test
 
 # Time-ordered backtest against one or more posts files
 pnpm --filter @reach/rules-engine backtest -- posts.json --timezone Europe/Istanbul
 pnpm --filter @reach/rules-engine backtest -- a.json b.json --pooled --quoted-impressions
+pnpm --filter @reach/rules-engine backtest -- a.json b.json --study
 pnpm --filter @reach/rules-engine backtest -- --snapshots snapshots.json
 
 # Type checking

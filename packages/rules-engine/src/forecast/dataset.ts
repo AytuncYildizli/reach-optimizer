@@ -26,6 +26,8 @@ export interface HistoryPost {
   account?: string | null;
   authorId?: string | null;
   quoted?: QuotedContext | null;
+  /** Reply to the author's own post. Dropped unless a study asks to keep it. */
+  selfReply?: boolean;
 }
 
 export interface QuotedContext {
@@ -54,6 +56,12 @@ export interface ModelRow {
   isQuote: boolean;
   lang: string;
   account: string;
+  /**
+   * EWMA of earlier posts of the same kind (original, quote, reply), span 20.
+   * Null until that kind has one earlier post. Not a model feature unless the
+   * extended set is on; always available as a competitor baseline.
+   */
+  ewmaImpressions: number | null;
 }
 
 export interface PrepareOptions {
@@ -69,6 +77,8 @@ export interface PrepareOptions {
    * it at compose time. The other quote features stay on: they are known then.
    */
   quotedImpressions?: boolean;
+  /** Keep replies to the author's own account and mark is_self_reply. */
+  includeSelfReplies?: boolean;
 }
 
 export interface PreparedDataset {
@@ -233,12 +243,14 @@ function parseOne(value: unknown, fallbackAccount?: string): HistoryPost | null 
   else if (typeof raw.media === 'string' && raw.media !== 'none') mediaType = mapMedia([raw.media]);
 
   const authorId = raw.author_id != null ? String(raw.author_id) : raw.authorId != null ? String(raw.authorId) : null;
+  const kind = kindOf(raw);
+  const inReplyTo = raw.in_reply_to_user_id != null ? String(raw.in_reply_to_user_id) : null;
 
   return {
     id,
     createdAt,
     text,
-    kind: kindOf(raw),
+    kind,
     lang: typeof raw.lang === 'string' ? raw.lang : 'und',
     mediaType,
     impressions,
@@ -251,6 +263,7 @@ function parseOne(value: unknown, fallbackAccount?: string): HistoryPost | null 
     account: accountOf(raw) ?? fallbackAccount ?? null,
     authorId,
     quoted: parseQuoted(raw, authorId, createdAt),
+    selfReply: kind === 'reply' && !!authorId && inReplyTo === authorId,
   };
 }
 
@@ -307,7 +320,7 @@ export function prepareDataset(posts: HistoryPost[], opts: PrepareOptions): Prep
   const activity: HistoryPost[] = [];
 
   for (const post of posts) {
-    if (post.kind === 'reply') {
+    if (post.kind === 'reply' && !(opts.includeSelfReplies && post.selfReply)) {
       dropped.reply = (dropped.reply ?? 0) + 1;
       continue;
     }
@@ -346,6 +359,9 @@ export function prepareDataset(posts: HistoryPost[], opts: PrepareOptions): Prep
 
   const rows: ModelRow[] = [];
   const checklist: PreparedDataset['checklist'] = [];
+  const ewmaByKind = new Map<string, number>();
+  const priorQuoteFollowers: number[] = [];
+  const ewmaAlpha = 2 / 21;
 
   for (let i = 0; i < eligible.length; i++) {
     const post = eligible[i]!;
@@ -371,7 +387,26 @@ export function prepareDataset(posts: HistoryPost[], opts: PrepareOptions): Prep
       automatedSpam: scored.automatedSpam,
     });
 
-    if (prior.length < opts.minHistory) continue;
+    const kindKey = post.kind === 'quote' ? 'quote' : post.kind === 'reply' ? 'reply' : 'original';
+    const ewmaImpressions = ewmaByKind.get(kindKey) ?? null;
+    const quoteFollowers = post.quoted?.authorFollowers;
+    let qRelAuthor = 0;
+    if (quoteFollowers != null && quoteFollowers >= 0 && priorQuoteFollowers.length > 0) {
+      const usual = median(priorQuoteFollowers.slice(-20));
+      qRelAuthor = Math.log1p(Math.max(0, quoteFollowers)) - Math.log1p(Math.max(0, usual));
+    }
+    const remember = () => {
+      const next =
+        ewmaImpressions == null
+          ? post.impressions
+          : ewmaAlpha * post.impressions + (1 - ewmaAlpha) * ewmaImpressions;
+      ewmaByKind.set(kindKey, next);
+      if (quoteFollowers != null && quoteFollowers >= 0) priorQuoteFollowers.push(quoteFollowers);
+    };
+    if (prior.length < opts.minHistory) {
+      remember();
+      continue;
+    }
     const window = prior.slice(-opts.window);
     const baselineImpressions = median(window.map((p) => p.impressions));
     const baselineEngagement = median(window.map((p) => engagementRate(p)));
@@ -393,7 +428,14 @@ export function prepareDataset(posts: HistoryPost[], opts: PrepareOptions): Prep
       followerCount: post.followerCount,
       quote: post.quoted ?? null,
       quotedImpressions: opts.quotedImpressions ?? false,
+      selfReply: post.selfReply ?? false,
     });
+    features.q_rel_author = Number.isFinite(qRelAuthor) ? qRelAuthor : 0;
+    features.log_ewma_gap =
+      ewmaImpressions != null
+        ? Math.log(Math.max(ewmaImpressions, 1e-6)) - Math.log(Math.max(baselineImpressions, 1))
+        : 0;
+    remember();
     rows.push({
       id: post.id,
       createdAt: post.createdAt,
@@ -419,6 +461,7 @@ export function prepareDataset(posts: HistoryPost[], opts: PrepareOptions): Prep
       isQuote,
       lang: post.lang,
       account: post.account?.trim() || '',
+      ewmaImpressions,
     });
   }
 
