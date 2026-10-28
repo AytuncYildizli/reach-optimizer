@@ -1,6 +1,6 @@
 import type { HistoryPost, ModelRow, PrepareOptions } from './dataset';
 import { postsByAccount, prepareDataset } from './dataset';
-import { fitBoost, predictBoost } from './boost';
+import { fitBoost, predictBoost, type BoostModel } from './boost';
 import { orderedFeatureNames } from './features';
 import {
   DEFAULT_MIN_AGE_DAYS,
@@ -15,7 +15,7 @@ import {
 } from './model';
 import { accountDummyName } from './pooled';
 import { fitHuberRidge, fitRidge, predictRidge, type RidgeModel } from './ridge';
-import { mae, maeLog, medianAe, spearman } from './stats';
+import { mae, maeLog, medianAe, quantile, spearman } from './stats';
 
 /**
  * Fixed menu. The winner is the largest raw-MAE improvement on the
@@ -69,6 +69,8 @@ export interface HoldoutScore {
   ewmaSpearman: number | null;
   passed: boolean;
   reason: string;
+  /** Holdout share inside the 80% band. The band width comes from the training slice. */
+  coverage80: number | null;
   perAccount: Array<{
     account: string;
     testN: number;
@@ -80,11 +82,31 @@ export interface HoldoutScore {
   }>;
 }
 
+/** Coefficients of the config that was scored on the holdout. Fit on the training span only. */
+export interface ShippedFit {
+  config: StudyConfigName;
+  featureNames: string[];
+  target: 'relative' | 'absolute' | 'ewma';
+  loss: 'squared' | 'huber' | 'gbt' | 'none';
+  shrinkK: number;
+  lambda: number;
+  mean: number[];
+  std: number[];
+  weights: number[];
+  intercept: number;
+  boost: BoostModel | null;
+  detail: string;
+  /** Log-impression residuals on the training select slice, not the holdout. */
+  residualQ10: number;
+  residualQ90: number;
+}
+
 export interface StudyReport {
   protocol: Record<string, string | number>;
   table: StudyRow[];
   chosen: StudyConfigName;
   holdout: HoldoutScore;
+  shipped: ShippedFit;
 }
 
 interface Spec {
@@ -164,6 +186,14 @@ function ewmaPred(row: ModelRow): number {
 interface Tuned {
   predict(rows: ModelRow[]): number[];
   detail: string;
+  featureNames: string[];
+  weights: number[];
+  mean: number[];
+  std: number[];
+  intercept: number;
+  lambda: number;
+  shrinkK: number;
+  boost: BoostModel | null;
 }
 
 function tuneLinear(
@@ -207,8 +237,16 @@ function tuneLinear(
   const model: RidgeModel | null = fitted;
   return {
     detail: `lambda ${bestLambda}${spec.shrink ? ` k ${bestK}` : ''}`,
+    featureNames: names,
+    weights: model?.weights ?? [],
+    mean: model?.mean ?? [],
+    std: model?.std ?? [],
+    intercept: model?.intercept ?? 0,
+    lambda: bestLambda,
+    shrinkK: bestK,
+    boost: null,
     predict(rows: ModelRow[]): number[] {
-      if (!model) return rows.map((row) => (spec.target === 'absolute' ? row.baselineImpressions : row.baselineImpressions));
+      if (!model) return rows.map((row) => row.baselineImpressions);
       const yhat = predictRidge(model, matrix(rows, names));
       return rows.map((row, i) => impressionsOf(row, yhat[i]!, spec.target, bestK));
     },
@@ -235,6 +273,14 @@ function tuneBoost(core: ModelRow[], hyper: ModelRow[], refit: ModelRow[], names
   const model = fitBoost(matrix(refit, names), y(refit), bestTrees, TREE_RATE, 2, 8);
   return {
     detail: `trees ${bestTrees} depth 2 lr ${TREE_RATE}`,
+    featureNames: names,
+    weights: [],
+    mean: [],
+    std: [],
+    intercept: 0,
+    lambda: 0,
+    shrinkK: 1,
+    boost: model,
     predict(rows: ModelRow[]): number[] {
       const yhat = predictBoost(model, matrix(rows, names));
       return rows.map((row, i) => impressionsOf(row, yhat[i]!, 'relative', 1));
@@ -246,6 +292,14 @@ function fitSpec(core: ModelRow[], hyper: ModelRow[], refit: ModelRow[], names: 
   if (spec.target === 'ewma') {
     return {
       detail: 'span-20 EWMA within original/quote/reply, else the rolling median',
+      featureNames: [],
+      weights: [],
+      mean: [],
+      std: [],
+      intercept: 0,
+      lambda: 0,
+      shrinkK: 1,
+      boost: null,
       predict: (rows) => rows.map(ewmaPred),
     };
   }
@@ -368,6 +422,7 @@ export function runStudy(posts: HistoryPost[], options: BacktestOptions = {}): S
   };
 
   const table: StudyRow[] = [];
+  const selectResidual = new Map<StudyConfigName, number[]>();
   for (const spec of SPECS) {
     const set = sets[spec.rows];
     const core = set.bundles.flatMap((bundle) => bundle.core).sort(byTime);
@@ -377,6 +432,10 @@ export function runStudy(posts: HistoryPost[], options: BacktestOptions = {}): S
     const names = set.namesFor(core);
     const tuned = fitSpec(core, hyper, fit, names, spec);
     const pred = tuned.predict(select);
+    selectResidual.set(
+      spec.name,
+      select.map((row, i) => Math.log(Math.max(row.impressions, 1e-6)) - Math.log(Math.max(pred[i]!, 1e-6))),
+    );
     const scored = scoreRows(pred, select);
     table.push({
       config: spec.name,
@@ -412,6 +471,16 @@ export function runStudy(posts: HistoryPost[], options: BacktestOptions = {}): S
     modelMae,
     baselineMae,
   });
+  const band = residualBand(selectResidual.get(chosen) ?? []);
+  let covered = 0;
+  for (let i = 0; i < test.length; i++) {
+    const point = Math.max(pred[i]!, 1e-6);
+    const low = point * Math.exp(band.q10);
+    const high = point * Math.exp(band.q90);
+    const lo = Math.min(low, high);
+    const hi = Math.max(low, high);
+    if (actual[i]! >= lo && actual[i]! <= hi) covered++;
+  }
   const perAccount = set.bundles.map((bundle) => {
     const accountPred = tuned.predict(bundle.test);
     const accountActual = bundle.test.map((row) => row.impressions);
@@ -461,7 +530,56 @@ export function runStudy(posts: HistoryPost[], options: BacktestOptions = {}): S
       ewmaSpearman: spearman(test.map(ewmaPred), actual),
       passed: verdict.passed,
       reason: verdict.reason,
+      coverage80: test.length > 0 ? covered / test.length : null,
       perAccount,
     },
+    shipped: {
+      config: chosen,
+      featureNames: tuned.featureNames,
+      target: spec.target,
+      loss: spec.loss,
+      shrinkK: tuned.shrinkK,
+      lambda: tuned.lambda,
+      mean: tuned.mean,
+      std: tuned.std,
+      weights: tuned.weights,
+      intercept: tuned.intercept,
+      boost: tuned.boost,
+      detail: tuned.detail,
+      residualQ10: band.q10,
+      residualQ90: band.q90,
+    },
   };
+}
+
+function residualBand(residuals: number[]): { q10: number; q90: number } {
+  if (residuals.length < 5) return { q10: 0, q90: 0 };
+  let q10 = quantile(residuals, 0.1);
+  let q90 = quantile(residuals, 0.9);
+  if (q10 > q90) {
+    const swap = q10;
+    q10 = q90;
+    q90 = swap;
+  }
+  return { q10, q90 };
+}
+
+/** Same reconstruction the study uses on a holdout row. `ewma` is that row's kind EWMA. */
+export function reconstructFit(
+  fit: Pick<ShippedFit, 'target' | 'loss' | 'shrinkK' | 'featureNames' | 'mean' | 'std' | 'weights' | 'intercept' | 'boost'>,
+  features: Record<string, number>,
+  baseline: number,
+  ewma: number | null,
+): number {
+  if (fit.target === 'ewma' || fit.loss === 'none') return ewma ?? baseline;
+  const row = fit.featureNames.map((name) => features[name] ?? 0);
+  let yhat = 0;
+  if (fit.loss === 'gbt' && fit.boost) {
+    yhat = predictBoost(fit.boost, [row])[0] ?? 0;
+  } else {
+    yhat =
+      predictRidge({ mean: fit.mean, std: fit.std, weights: fit.weights, intercept: fit.intercept }, [row])[0] ?? 0;
+  }
+  if (fit.target === 'absolute') return Math.exp(Math.max(-5, Math.min(12, yhat)));
+  return baseline * Math.exp(Math.max(-5, Math.min(5, fit.shrinkK * yhat)));
 }
