@@ -96,6 +96,21 @@ export interface AccountReachModel {
   topWeights: Array<{ name: string; weight: number }>;
   /** Train-slice comparison that chose `config`. The holdout is not in this table. */
   selection: Array<{ config: string; maeGain: number | null; spearman: number | null; detail: string }>;
+  /** Self-replies already in the open 6h burst. A new self-reply uses this plus one. */
+  trailingSelfReplies: number;
+  /**
+   * Logistic head for P(impressions > 3× baseline). Present only when the
+   * holdout AUC is above 0.65. Absent means the probability is not shown.
+   */
+  breakout: {
+    featureNames: string[];
+    mean: number[];
+    std: number[];
+    weights: number[];
+    intercept: number;
+    auc: number;
+    brier: number;
+  } | null;
   validation: AccountReachValidation;
 }
 
@@ -123,5 +138,10 @@ export interface DraftScore {
   confidence: number;
   topFactors: ReachFactor[];
   suggestions: ReachSuggestion[];
+  /**
+   * P(impressions > 3× the account's rolling median). Null unless a head
+   * fit on older posts has holdout AUC above 0.65, and the impression gate passed.
+   */
+  breakoutProbability: number | null;
   reason: string;
 }

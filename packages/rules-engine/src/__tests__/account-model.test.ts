@@ -162,6 +162,22 @@ describe('synthetic reach fixture', () => {
     const missing = score(text, {});
     expect(missing.status).toBe('withheld');
     expect(missing.range).toBeNull();
+    expect(missing.breakoutProbability).toBeNull();
+
+    const head = {
+      featureNames: ['has_image'],
+      mean: [0],
+      std: [1],
+      weights: [1.5],
+      intercept: -0.2,
+      auc: 0.8,
+      brier: 0.12,
+    };
+    const shown = score(text, { model: { ...signal.model, breakout: head }, hasMedia: true, mediaType: 'image', now });
+    expect(shown.breakoutProbability).toBeGreaterThan(0);
+    expect(shown.breakoutProbability).toBeLessThanOrEqual(1);
+    const hiddenProb = score(text, { model: { ...signal.model, breakout: { ...head, auc: 0.6 } }, hasMedia: true, mediaType: 'image', now });
+    expect(hiddenProb.breakoutProbability).toBeNull();
   });
 
   it('selects on a training slice for an archive-shaped series and keeps weights if the gate fails', () => {

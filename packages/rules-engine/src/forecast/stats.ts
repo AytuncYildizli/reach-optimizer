@@ -74,6 +74,35 @@ export function quantile(values: number[], q: number): number {
   return s[lo]! * (1 - w) + s[hi]! * w;
 }
 
+/** Mann-Whitney AUC. Null when either class is missing. Ties count as 0.5. */
+export function auc(scores: number[], labels: number[]): number | null {
+  const pos: number[] = [];
+  const neg: number[] = [];
+  for (let i = 0; i < scores.length; i++) {
+    if (labels[i]! >= 0.5) pos.push(scores[i]!);
+    else neg.push(scores[i]!);
+  }
+  if (pos.length === 0 || neg.length === 0) return null;
+  let wins = 0;
+  for (const positive of pos) {
+    for (const negative of neg) {
+      if (positive > negative) wins += 1;
+      else if (positive === negative) wins += 0.5;
+    }
+  }
+  return wins / (pos.length * neg.length);
+}
+
+export function brier(scores: number[], labels: number[]): number | null {
+  if (scores.length === 0 || scores.length !== labels.length) return null;
+  let sum = 0;
+  for (let i = 0; i < scores.length; i++) {
+    const gap = scores[i]! - labels[i]!;
+    sum += gap * gap;
+  }
+  return sum / scores.length;
+}
+
 export function maeLog(pred: number[], actual: number[]): number | null {
   if (pred.length === 0 || pred.length !== actual.length) return null;
   let s = 0;

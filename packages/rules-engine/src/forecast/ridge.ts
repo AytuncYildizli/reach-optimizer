@@ -164,6 +164,67 @@ export function fitHuberRidge(X: number[][], y: number[], lambda: number, delta 
   return { ...fit, mean, std };
 }
 
+/**
+ * Quantile ridge via IRLS. Tau is fixed by the caller from a training slice.
+ * Weights are pinball / |residual|, which targets the check loss rather than squared error.
+ */
+export function fitQuantileRidge(X: number[][], y: number[], lambda: number, tau: number): RidgeModel | null {
+  const { mean, std } = columnStats(X);
+  const Xz = applyStandardize(X, mean, std);
+  let fit = fitRidgeOnStandardized(Xz, y, lambda);
+  if (!fit) return null;
+  for (let iter = 0; iter < 20; iter++) {
+    const pred = dotPredict(Xz, fit.weights, fit.intercept);
+    const w = y.map((value, i) => {
+      const residual = value - pred[i]!;
+      const pinball = residual >= 0 ? tau : 1 - tau;
+      return pinball / Math.max(Math.abs(residual), 1e-3);
+    });
+    const next = fitWeightedRidgeOnStandardized(Xz, y, w, lambda);
+    if (!next) break;
+    fit = next;
+  }
+  return { ...fit, mean, std };
+}
+
+function sigmoid(value: number): number {
+  if (value > 20) return 1;
+  if (value < -20) return 0;
+  return 1 / (1 + Math.exp(-value));
+}
+
+/** L2-penalized logistic regression on standardized columns. */
+export function fitLogisticRidge(X: number[][], y: number[], lambda: number): RidgeModel | null {
+  const { mean, std } = columnStats(X);
+  const Xz = applyStandardize(X, mean, std);
+  const n = y.length;
+  if (n === 0) return null;
+  const p = Xz[0]?.length ?? 0;
+  let intercept = 0;
+  const weights = new Array<number>(p).fill(0);
+  for (let iter = 0; iter < 25; iter++) {
+    const linear = dotPredict(Xz, weights, intercept);
+    const prob = linear.map(sigmoid);
+    const z = y.map((label, i) => {
+      const pi = Math.min(1 - 1e-6, Math.max(1e-6, prob[i]!));
+      return linear[i]! + (label - pi) / (pi * (1 - pi));
+    });
+    const w = prob.map((pi) => {
+      const clipped = Math.min(1 - 1e-6, Math.max(1e-6, pi));
+      return clipped * (1 - clipped);
+    });
+    const next = fitWeightedRidgeOnStandardized(Xz, z, w, lambda);
+    if (!next) return { weights, intercept, mean, std };
+    weights.splice(0, weights.length, ...next.weights);
+    intercept = next.intercept;
+  }
+  return { weights, intercept, mean, std };
+}
+
+export function predictLogistic(model: RidgeModel, X: number[][]): number[] {
+  return predictRidge(model, X).map(sigmoid);
+}
+
 export function dotPredict(Xz: number[][], weights: number[], intercept: number): number[] {
   return Xz.map((row) => {
     let s = intercept;
