@@ -82,9 +82,11 @@ The training slice picked `self_reply_extended_shrink` (select-slice raw-MAE gai
 
 Largest standardized weights: `log_baseline_impressions` −0.188, `log_ewma_gap` +0.170, `log1p_hours_since_prev` +0.146, `is_self_reply` −0.122, `is_quote` +0.099, `has_link` +0.061, `paragraph_breaks` +0.056, `any_number_count` +0.055.
 
+A later ablation (topics, hooks, length/thread, gif, Huber, quantile, two-part breakout, recency) was scored on the training slice only. Huber won that slice. Its sealed holdout Spearman rose to 0.690 and its MAE rose to 5120.9, so the point model stayed the row above. Quoted-author size was skipped: the file has no follower counts for quoted accounts. `score` adds `breakoutProbability` for P(impressions > 3× median) because that head's holdout AUC is 0.826 and its Brier score is 0.106.
+
 ## Synthetic fixture
 
-180 daily posts, timezone UTC, `asOf` 2026-06-01, minimum age 0. Signal fixture: stable base, impressions move with image (×3), an 18:00 UTC hour (×2), and one hashtag (×1.7). Flat fixture: every impression is 1000, so the median cannot be beaten. Gate unchanged. Tests: 105 rules-engine, 13 ai-checks.
+180 daily posts, timezone UTC, `asOf` 2026-06-01, minimum age 0. Signal fixture: stable base, impressions move with image (×3), an 18:00 UTC hour (×2), and one hashtag (×1.7). Flat fixture: every impression is 1000, so the median cannot be beaten. Gate unchanged. Tests: 107 rules-engine, 13 ai-checks.
 
 | Fixture | Config | Train / test | Spearman (model vs median) | MAE (model vs median) | log-MAE | 80% coverage | Gate |
 |---|---|---:|---:|---:|---:|---:|---|

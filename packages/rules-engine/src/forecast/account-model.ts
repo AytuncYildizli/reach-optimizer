@@ -6,8 +6,11 @@ import type {
   ReachRange,
   ReachSuggestion,
 } from '@reach/shared-types';
-import { prepareDataset, type HistoryPost } from './dataset';
+import { fitBreakoutHead } from './breakout';
+import { prepareDataset, type HistoryPost, type ModelRow } from './dataset';
 import { buildFeatureRecord, externalLinkCount, guessLang, scorePost, topicTokens, zonedHourDow } from './features';
+import { reachFeatureRecord } from './reach-features';
+import { predictLogistic } from './ridge';
 import { wordCount } from '../signals/_helpers';
 import { reconstructFit, runStudy, type ShippedFit } from './study';
 
@@ -221,6 +224,8 @@ export function trainAccountModel(posts: HistoryPost[], options: TrainAccountOpt
     latestPostAt: prepared.nextContext.latestPostAt,
     recentPostAts: prepared.nextContext.recentPostAts,
     recentTopics: prepared.nextContext.recentTopics,
+    trailingSelfReplies: prepared.nextContext.trailingSelfReplies,
+    breakout: breakoutHead(prepared.rows, trainFraction, fit.featureNames, fit.lambda),
     topWeights,
     selection: study.table.map((row) => ({
       config: row.config,
@@ -252,6 +257,11 @@ export function trainAccountModel(posts: HistoryPost[], options: TrainAccountOpt
   };
 }
 
+function breakoutHead(rows: ModelRow[], trainFraction: number, featureNames: string[], lambda: number) {
+  const cut = Math.floor(rows.length * trainFraction);
+  return fitBreakoutHead(rows.slice(0, cut), rows.slice(cut), featureNames, lambda);
+}
+
 function withheld(reason: string): DraftScore {
   return {
     status: 'withheld',
@@ -259,6 +269,7 @@ function withheld(reason: string): DraftScore {
     confidence: 0,
     topFactors: [],
     suggestions: [],
+    breakoutProbability: null,
     reason,
   };
 }
@@ -273,12 +284,12 @@ export function parseAccountModel(data: unknown): AccountReachModel | null {
   return rec as unknown as AccountReachModel;
 }
 
-function draftFlags(meta: DraftScoreMeta): { hasImage: boolean; hasVideo: boolean } {
-  if (meta.mediaType === 'video') return { hasImage: false, hasVideo: true };
-  if (meta.mediaType === 'poll') return { hasImage: false, hasVideo: false };
-  if (meta.mediaType === 'image' || meta.mediaType === 'gif') return { hasImage: true, hasVideo: false };
-  if (meta.hasMedia) return { hasImage: true, hasVideo: false };
-  return { hasImage: false, hasVideo: false };
+function draftFlags(meta: DraftScoreMeta): { hasImage: boolean; hasVideo: boolean; mediaType: 'image' | 'video' | 'gif' | null } {
+  if (meta.mediaType === 'video') return { hasImage: false, hasVideo: true, mediaType: 'video' };
+  if (meta.mediaType === 'gif') return { hasImage: true, hasVideo: false, mediaType: 'gif' };
+  if (meta.mediaType === 'poll') return { hasImage: false, hasVideo: false, mediaType: null };
+  if (meta.mediaType === 'image' || meta.hasMedia) return { hasImage: true, hasVideo: false, mediaType: 'image' };
+  return { hasImage: false, hasVideo: false, mediaType: null };
 }
 
 function resolveNow(value: DraftScoreMeta['now']): Date | null {
@@ -309,7 +320,7 @@ function draftFeatures(
   text: string,
   meta: DraftScoreMeta,
   when: Date,
-  flags: { hasImage: boolean; hasVideo: boolean },
+  flags: { hasImage: boolean; hasVideo: boolean; mediaType: 'image' | 'video' | 'gif' | null },
 ): Record<string, number> {
   const nowMs = when.getTime();
   const recent = (model.recentPostAts ?? [])
@@ -349,7 +360,27 @@ function draftFeatures(
   features.log_ewma_gap =
     ewma != null ? Math.log(Math.max(ewma, 1e-6)) - Math.log(Math.max(baseline, 1)) : 0;
   features.q_rel_author = 0;
+  const threadPos = isThread ? (model.trailingSelfReplies ?? 0) + 1 : 0;
+  const extra = reachFeatureRecord({
+    text,
+    lang: guessLang(text),
+    mediaType: flags.mediaType,
+    threadPos,
+  });
+  for (const key of Object.keys(extra)) features[key] = extra[key]!;
   return features;
+}
+
+function breakoutProbabilityOf(model: AccountReachModel, features: Record<string, number>): number | null {
+  const head = model.breakout;
+  if (!head || !(head.auc > 0.65)) return null;
+  const row = head.featureNames.map((name) => features[name] ?? 0);
+  const probability = predictLogistic(
+    { mean: head.mean, std: head.std, weights: head.weights, intercept: head.intercept },
+    [row],
+  )[0];
+  if (probability == null || !Number.isFinite(probability)) return null;
+  return Math.round(Math.max(0, Math.min(1, probability)) * 1000) / 1000;
 }
 
 function pointOf(
@@ -425,13 +456,13 @@ function suggestionsFor(
   text: string,
   meta: DraftScoreMeta,
   when: Date,
-  flags: { hasImage: boolean; hasVideo: boolean },
+  flags: { hasImage: boolean; hasVideo: boolean; mediaType: 'image' | 'video' | 'gif' | null },
   current: ReachRange,
   currentPoint: number,
 ): ReachSuggestion[] {
   if (!(currentPoint > 0) || model.predictTarget === 'ewma' || model.loss === 'none') return [];
   const out: ReachSuggestion[] = [];
-  const consider = (id: string, label: string, nextMeta: DraftScoreMeta, nextFlags: { hasImage: boolean; hasVideo: boolean }, nextWhen: Date) => {
+  const consider = (id: string, label: string, nextMeta: DraftScoreMeta, nextFlags: { hasImage: boolean; hasVideo: boolean; mediaType: 'image' | 'video' | 'gif' | null }, nextWhen: Date) => {
     const features = draftFeatures(model, text, nextMeta, nextWhen, nextFlags);
     const point = pointOf(model, features, nextMeta.isQuote ?? false, nextMeta.isThread ?? false);
     if ((point - currentPoint) / currentPoint < MIN_SUGGESTION_LIFT) return;
@@ -441,12 +472,12 @@ function suggestionsFor(
   };
 
   if (!flags.hasImage && !flags.hasVideo) {
-    consider('add-image', 'An image is associated with a higher range on your past posts.', meta, { hasImage: true, hasVideo: false }, when);
-    consider('add-video', 'A video is associated with a higher range on your past posts.', meta, { hasImage: false, hasVideo: true }, when);
+    consider('add-image', 'An image is associated with a higher range on your past posts.', meta, { hasImage: true, hasVideo: false, mediaType: 'image' }, when);
+    consider('add-video', 'A video is associated with a higher range on your past posts.', meta, { hasImage: false, hasVideo: true, mediaType: 'video' }, when);
   } else if (flags.hasImage && !flags.hasVideo) {
-    consider('remove-image', 'Posts without an image are associated with a higher range on your past posts.', meta, { hasImage: false, hasVideo: false }, when);
+    consider('remove-image', 'Posts without an image are associated with a higher range on your past posts.', meta, { hasImage: false, hasVideo: false, mediaType: null }, when);
   } else if (flags.hasVideo) {
-    consider('remove-video', 'Posts without a video are associated with a higher range on your past posts.', meta, { hasImage: false, hasVideo: false }, when);
+    consider('remove-video', 'Posts without a video are associated with a higher range on your past posts.', meta, { hasImage: false, hasVideo: false, mediaType: null }, when);
   }
 
   const bare = draftFeatures(model, text, meta, when, flags);
@@ -550,6 +581,7 @@ export function score(draftText: string, meta: DraftScoreMeta = {}): DraftScore 
     confidence: confidenceOf(model),
     topFactors: topFactors(model, features),
     suggestions: suggestionsFor(model, text, meta, now, flags, range, point),
+    breakoutProbability: breakoutProbabilityOf(model, features),
     reason: model.reason,
   };
 }

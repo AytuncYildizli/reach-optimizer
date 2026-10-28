@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { importHistory, historyToJson } from './import-archive';
+import { runReachAblation } from './ablation';
 import { parseAccountModel, score, trainAccountModel } from './account-model';
 import { parsePostsJson } from './dataset';
 import type { DraftScoreMeta } from '@reach/shared-types';
@@ -14,6 +15,7 @@ function usage(): void {
   pnpm --filter @reach/rules-engine reach -- import --archive tweets.js --metrics metrics.csv --account aytunc --out posts.json
   pnpm --filter @reach/rules-engine reach -- train --posts posts.json --timezone Europe/Istanbul --account aytunc --out model.json
   pnpm --filter @reach/rules-engine reach -- score --model model.json --text "draft" --media image --json
+  pnpm --filter @reach/rules-engine reach -- ablation --posts posts.json --timezone Europe/Istanbul --json
 
 import reads an X archive (tweets.js) plus a CSV or JSON metrics file.
 train fits log impressions and withholds the model unless it beats the rolling median.
@@ -172,6 +174,56 @@ function trainCommand(flags: Record<string, string | string[]>): void {
   }
 }
 
+function ablationCommand(flags: Record<string, string | string[]>): void {
+  const postsPath = flagString(flags, 'posts');
+  if (!postsPath) {
+    console.error('ablation needs --posts <file.json>.');
+    process.exit(1);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(postsPath, 'utf8'));
+  } catch {
+    console.error('Posts file is not JSON.');
+    process.exit(1);
+  }
+  const posts = parsePostsJson(parsed, flagString(flags, 'account'));
+  const asOf = flagString(flags, 'as-of');
+  const minAge = flagString(flags, 'min-age-days');
+  const report = runReachAblation(posts, {
+    timezone: flagString(flags, 'timezone') ?? 'UTC',
+    asOf: asOf ? new Date(asOf) : undefined,
+    minAgeDays: minAge ? Number(minAge) : undefined,
+  });
+  const summary = {
+    quoteFollowersAvailable: report.quoteFollowersAvailable,
+    chosen: report.chosen,
+    holdout: report.holdout,
+    table: report.table.map((row) => ({
+      id: row.id,
+      mae: row.mae,
+      spearman: row.spearman,
+      maeGain: row.maeGain,
+      deltaMae: row.deltaMae,
+      deltaSpearman: row.deltaSpearman,
+      detail: row.detail,
+    })),
+  };
+  if (flags.json === 'true') printJson(summary);
+  else {
+    console.log(`chosen ${report.chosen}  quoteFollowers ${report.quoteFollowersAvailable}`);
+    for (const row of report.table) {
+      console.log(
+        `${row.id.padEnd(24)} mae ${fmt(row.mae)}  rho ${fmt(row.spearman)}  dMae ${fmt(row.deltaMae)}  dRho ${fmt(row.deltaSpearman)}  ${row.detail}`,
+      );
+    }
+    const hold = report.holdout;
+    console.log(
+      `holdout ${hold.id} mae ${fmt(hold.mae)} rho ${fmt(hold.spearman)} dMae ${fmt(hold.deltaMaeVsShipped)} dRho ${fmt(hold.deltaSpearmanVsShipped)} ship ${hold.improvesOnShipped}`,
+    );
+  }
+}
+
 function scoreCommand(flags: Record<string, string | string[]>): void {
   const modelPath = flagString(flags, 'model');
   const text = flagString(flags, 'text') ?? (flagString(flags, 'text-file') ? readFlagFile(flags, 'text-file') : undefined);
@@ -233,6 +285,7 @@ function main(): void {
   const { command, flags } = parseArgs(process.argv.slice(2));
   if (command === 'import') importCommand(flags);
   else if (command === 'train') trainCommand(flags);
+  else if (command === 'ablation') ablationCommand(flags);
   else if (command === 'score') scoreCommand(flags);
   else {
     usage();

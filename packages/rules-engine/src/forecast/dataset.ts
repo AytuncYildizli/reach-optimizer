@@ -5,6 +5,7 @@ import {
   scorePost,
   topicTokens,
 } from './features';
+import { reachFeatureRecord, threadPosition } from './reach-features';
 
 export interface HistoryPost {
   id: string;
@@ -97,6 +98,8 @@ export interface PreparedDataset {
     /** EWMA after the last kept post of each kind. A new draft uses this as its prior. */
     ewmaByKind: { original: number | null; quote: number | null; reply: number | null };
     quoteFollowerMedian: number | null;
+    /** Self-replies at the tail of the same 6h burst. A new self-reply is one past this. */
+    trailingSelfReplies: number;
   };
 }
 
@@ -365,6 +368,8 @@ export function prepareDataset(posts: HistoryPost[], opts: PrepareOptions): Prep
   const ewmaByKind = new Map<string, number>();
   const priorQuoteFollowers: number[] = [];
   const ewmaAlpha = 2 / 21;
+  let burstAt: number | null = null;
+  let burstPos = 0;
 
   for (let i = 0; i < eligible.length; i++) {
     const post = eligible[i]!;
@@ -406,6 +411,10 @@ export function prepareDataset(posts: HistoryPost[], opts: PrepareOptions): Prep
       ewmaByKind.set(kindKey, next);
       if (quoteFollowers != null && quoteFollowers >= 0) priorQuoteFollowers.push(quoteFollowers);
     };
+    const createdMs = created.getTime();
+    burstPos = threadPosition(post.selfReply ?? false, burstAt, createdMs, burstPos);
+    burstAt = createdMs;
+    const threadPos = burstPos;
     if (prior.length < opts.minHistory) {
       remember();
       continue;
@@ -438,6 +447,13 @@ export function prepareDataset(posts: HistoryPost[], opts: PrepareOptions): Prep
       ewmaImpressions != null
         ? Math.log(Math.max(ewmaImpressions, 1e-6)) - Math.log(Math.max(baselineImpressions, 1))
         : 0;
+    const extra = reachFeatureRecord({
+      text: post.text,
+      lang: post.lang,
+      mediaType: post.mediaType,
+      threadPos,
+    });
+    for (const key of Object.keys(extra)) features[key] = extra[key]!;
     remember();
     rows.push({
       id: post.id,
@@ -489,6 +505,7 @@ export function prepareDataset(posts: HistoryPost[], opts: PrepareOptions): Prep
         reply: ewmaByKind.get('reply') ?? null,
       },
       quoteFollowerMedian: priorQuoteFollowers.length > 0 ? median(priorQuoteFollowers.slice(-20)) : null,
+      trailingSelfReplies: burstPos,
     },
   };
 }
