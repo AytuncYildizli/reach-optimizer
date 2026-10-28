@@ -136,6 +136,18 @@ pnpm --filter @reach/rules-engine backtest -- a.json b.json --study --timezone E
 
 `posts.json` is an array of posts with `public_metrics` (the X API post shape). Replies, posts younger than 3 days, captions with no scorable text, and duplicate captions are dropped from the fit. Posts from the last 3 days stay in the live recency and topic context; their impressions are still moving, so they stay out of the rolling baseline. The daily calibrate cron fits the per-account model for tracked tweets and stores it on the user. The extension reads that snapshot, refreshing account health when the cache is missing, and shows the checklist when no model has passed.
 
+### Draftroom score
+
+`score(draftText, meta)` is the call Draftroom makes. It trains on the account's own posts, returns an impression range only when that model beats the rolling-median baseline on newer posts, and otherwise returns `status: "withheld"`. Suggestions name a change (image, video, hashtag, link, hour). They do not rewrite the draft, and this path does not post to X.
+
+The X archive (`tweets.js`) has text and time but not impressions. Join it with a CSV or JSON metrics file. `STATUS.md` lists the columns and what is still heuristic.
+
+```bash
+pnpm --filter @reach/rules-engine reach -- import --archive tweets.js --metrics metrics.csv --account aytunc --out posts.json
+pnpm --filter @reach/rules-engine reach -- train --posts posts.json --timezone Europe/Istanbul --account aytunc --out model.json
+pnpm --filter @reach/rules-engine reach -- score --model model.json --text "draft" --media image --json
+```
+
 ## Quick Start
 
 ### 1. Clone and install

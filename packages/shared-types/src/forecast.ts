@@ -5,7 +5,7 @@
  */
 
 export interface FittedTargetModel {
-  target: 'log_impression_ratio' | 'engagement_residual';
+  target: 'log_impression_ratio' | 'log_impressions' | 'engagement_residual';
   featureNames: string[];
   /** Train-set mean of each feature, aligned with featureNames. */
   mean: number[];

@@ -8,8 +8,22 @@ export {
   forecastDraft,
   judgeTarget,
   judgeLogMae,
+  importHistory,
+  historyToJson,
+  trainAccountModel,
+  score,
+  parseAccountModel,
 } from './forecast';
-export type { HistoryPost, BacktestOptions, BacktestReport, DraftInput, PooledBacktestReport, SnapshotBacktestReport } from './forecast';
+export type {
+  HistoryPost,
+  BacktestOptions,
+  BacktestReport,
+  DraftInput,
+  PooledBacktestReport,
+  SnapshotBacktestReport,
+  ImportResult,
+  TrainAccountResult,
+} from './forecast';
 export { buildContext } from './context';
 export { runAllSignals, signalPredictors } from './signals';
 export type { SignalPredictor } from './signals';

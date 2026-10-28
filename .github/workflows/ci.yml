@@ -1,0 +1,25 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @reach/shared-types typecheck
+      - run: pnpm --filter @reach/rules-engine typecheck
+      - run: pnpm --filter @reach/rules-engine test
+      - run: pnpm --filter @reach/ai-checks typecheck
+      - run: pnpm --filter @reach/ai-checks test
