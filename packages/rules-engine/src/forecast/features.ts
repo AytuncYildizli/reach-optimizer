@@ -112,6 +112,27 @@ export function guessLang(text: string): string {
   return 'und';
 }
 
+const NON_EXTERNAL_HOST =
+  /^(?:mobile\.)?(?:twitter\.com|x\.com|pic\.twitter\.com|pic\.x\.com|pbs\.twimg\.com|video\.twimg\.com)$/i;
+
+/** Counts URLs that leave X. pic/twimg hosts and twitter.com / x.com links do not count. Bare t.co stays, because the expansion is unknown. */
+export function externalLinkCount(text: string): number {
+  const matches = text.match(/https?:\/\/\S+/gi) ?? [];
+  let count = 0;
+  for (const raw of matches) {
+    const cleaned = raw.replace(/[),.;!?]+$/g, '');
+    let host = '';
+    try {
+      host = new URL(cleaned).hostname.toLowerCase().replace(/^www\./, '');
+    } catch {
+      continue;
+    }
+    if (NON_EXTERNAL_HOST.test(host)) continue;
+    count++;
+  }
+  return count;
+}
+
 function countMatches(text: string, source: string, flags: string): number {
   const re = new RegExp(source, flags.includes('g') ? flags : `${flags}g`);
   return [...text.matchAll(re)].length;
@@ -199,7 +220,7 @@ export function buildFeatureRecord(parts: FeatureParts): Record<string, number> 
   rec.paragraph_breaks = countMatches(text, '\\n\\s*\\n', 'g');
   rec.specific_number_count = countMatches(text, SPECIFIC_NUMBER_REGEX.source, SPECIFIC_NUMBER_REGEX.flags);
   rec.any_number_count = countMatches(text, '\\d+(?:\\.\\d+)?%?', 'g');
-  rec.link_count = countMatches(text, 'https?:\\/\\/\\S+', 'gi');
+  rec.link_count = externalLinkCount(text);
   rec.has_link = rec.link_count > 0 ? 1 : 0;
   rec.has_question = text.includes('?') ? 1 : 0;
   rec.has_image = parts.hasImage ? 1 : 0;

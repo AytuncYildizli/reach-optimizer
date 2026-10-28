@@ -10,7 +10,7 @@ No model of @aytunc is in this repo. His posts are not here. The numbers below a
 - Per-account ridge on `log(impressions / rolling median)`, time-ordered holdout, and the gate from PR #23. The extension shows an 80% interval only when that gate passes. The old fixed multipliers (image ×1.35 and the rest) are not shown.
 - Backtest CLI (`pnpm --filter @reach/rules-engine backtest`) for one account, a pooled fit, early-engagement snapshots, and the ablation menu.
 - File import of an X archive (`tweets.js`) joined to a metrics CSV or JSON. Stored metrics: impressions, likes, reposts, replies, quotes, bookmarks.
-- `trainAccountModel` / `score`: ridge on `log(impressions)` using text, format, length, media, time of day, topic overlap, and hashtag count. Same gate: at least 40 older and 20 newer modeled posts, Spearman positive and above the rolling median, raw MAE at least 5% lower. The rolling median is the baseline, not a feature. Constant columns are dropped.
+- `trainAccountModel` / `score` uses the `backtest --study` menu. The winner is the largest raw-MAE gain on a training-only slice. That one config is gated on the newer posts. Thresholds stay 40 / 20 / 5% raw MAE, with Spearman positive and above the rolling median. Weights are stored either way. A failed gate still returns `withheld` and no range. Quote permalinks and media t.co links are not counted as external links.
 - CLI: `reach import`, `reach train`, `reach score --json`. Training reads local files only.
 
 ## What is stubbed

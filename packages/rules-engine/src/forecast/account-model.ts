@@ -1,29 +1,21 @@
 import type {
   AccountReachModel,
-  AccountReachValidation,
   DraftScore,
   DraftScoreMeta,
   ReachFactor,
   ReachRange,
   ReachSuggestion,
 } from '@reach/shared-types';
-import type { HistoryPost } from './dataset';
-import { topicTokens, zonedHourDow } from './features';
+import { prepareDataset, type HistoryPost } from './dataset';
+import { buildFeatureRecord, externalLinkCount, guessLang, scorePost, topicTokens, zonedHourDow } from './features';
 import { wordCount } from '../signals/_helpers';
-import {
-  evaluateExamples,
-  judgeTarget,
-  MIN_TEST,
-  MIN_TRAIN,
-  varyingFeatureNames,
-  type Example,
-} from './model';
-import { median } from './stats';
+import { reconstructFit, runStudy, type ShippedFit } from './study';
 
 /**
- * Ridge regression on log impressions for one account.
- * Features are text, format, length, media, time of day, topic, and hashtags.
- * The rolling median is the baseline the gate has to beat. It is not a feature.
+ * Per-account reach model. The config is chosen the way `runStudy` chooses it:
+ * largest raw-MAE gain on a training-only slice, then one gate on the newer
+ * posts that slice never saw. The gate thresholds are unchanged. Weights are
+ * written either way; a failed gate still withholds every range.
  * Nothing here posts, and nothing here rewrites the draft.
  */
 
@@ -122,13 +114,12 @@ export function topicOverlap(text: string, recentTopics: string[]): number {
 export function buildAccountFeatures(input: AccountFeatureInput): Record<string, number> {
   const text = input.text;
   const { hour, dow } = zonedHourDow(input.createdAt, input.timeZone);
-  const links = text.match(/https?:\/\/\S+/gi);
   const rec: Record<string, number> = {
     log1p_chars: finite(Math.log1p(text.length)),
     word_count: wordCount(text),
     newline_count: (text.match(/\n/g) ?? []).length,
     has_question: text.includes('?') ? 1 : 0,
-    has_link: links && links.length > 0 ? 1 : 0,
+    has_link: externalLinkCount(text) > 0 ? 1 : 0,
     has_image: input.hasImage ? 1 : 0,
     has_video: input.hasVideo ? 1 : 0,
     hashtag_count: hashtagCount(text),
@@ -152,85 +143,10 @@ function assertTimeZone(timeZone: string): void {
   }
 }
 
-function mediaFlags(mediaType: HistoryPost['mediaType']): { hasImage: boolean; hasVideo: boolean } {
-  return {
-    hasImage: mediaType === 'image' || mediaType === 'gif',
-    hasVideo: mediaType === 'video',
-  };
-}
 
-function blankValidation(reason: string, trainN: number, testN: number): AccountReachValidation {
-  return {
-    passed: false,
-    reason,
-    trainN,
-    testN,
-    spearman: null,
-    mae: null,
-    baselineSpearman: null,
-    baselineMae: null,
-    maeLog: null,
-    baselineMaeLog: null,
-    coverage80: null,
-  };
-}
-
-function validationFromReport(report: {
-  passed: boolean;
-  reason: string;
-  trainN: number;
-  testN: number;
-  spearman: number | null;
-  mae: number | null;
-  baselineSpearman: number | null;
-  baselineMae: number | null;
-  maeLog: number | null;
-  baselineMaeLog: number | null;
-  coverage80: number | null;
-}): AccountReachValidation {
-  return {
-    passed: report.passed,
-    reason: report.reason,
-    trainN: report.trainN,
-    testN: report.testN,
-    spearman: report.spearman,
-    mae: report.mae,
-    baselineSpearman: report.baselineSpearman,
-    baselineMae: report.baselineMae,
-    maeLog: report.maeLog,
-    baselineMaeLog: report.baselineMaeLog,
-    coverage80: report.coverage80,
-  };
-}
-
-function dedupeKey(text: string): string {
-  return text.replace(/\s+/g, ' ').trim();
-}
-
-interface ModeledRow {
-  id: string;
-  createdAt: string;
-  impressions: number;
-  baseline: number;
-  features: Record<string, number>;
-}
-
-function rememberTopics(history: string[], text: string): void {
-  for (const token of topicTokens(text)) history.push(token);
-  if (history.length > TOPIC_MEMORY) history.splice(0, history.length - TOPIC_MEMORY);
-}
-
-function uniqueTail(tokens: string[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (let i = tokens.length - 1; i >= 0 && out.length < RECENT_TOPIC_CAP; i--) {
-    const token = tokens[i]!;
-    if (seen.has(token)) continue;
-    seen.add(token);
-    out.push(token);
-  }
-  return out.reverse();
-}
+const INCLUDE_SELF: Record<string, boolean> = {
+  self_reply_extended_shrink: true,
+};
 
 export function trainAccountModel(posts: HistoryPost[], options: TrainAccountOptions = {}): TrainAccountResult {
   const timezone = options.timezone ?? 'UTC';
@@ -249,190 +165,89 @@ export function trainAccountModel(posts: HistoryPost[], options: TrainAccountOpt
     throw new Error('This model is per account. Pass account when the file has more than one.');
   }
   const account = accountFilter || [...names][0] || 'account';
+  const scoped = posts
+    .filter((post) => (post.account?.trim() || account) === account)
+    .map((post) => ({ ...post, account }));
 
-  const dropped: Record<string, number> = {
-    other_account: 0,
-    reply: 0,
-    retweet: 0,
-    short_text: 0,
-    too_recent: 0,
-    non_positive_impressions: 0,
-    duplicate: 0,
-    bad_timestamp: 0,
-  };
-  const cutoff = asOf.getTime() - minAgeDays * 24 * 60 * 60 * 1000;
-  const candidates: HistoryPost[] = [];
-  for (const post of posts) {
-    const postAccount = post.account?.trim() || account;
-    if (postAccount !== account) {
-      dropped.other_account = (dropped.other_account ?? 0) + 1;
-      continue;
-    }
-    if (post.kind === 'retweet') {
-      dropped.retweet = (dropped.retweet ?? 0) + 1;
-      continue;
-    }
-    if (post.kind === 'reply' && !post.selfReply) {
-      dropped.reply = (dropped.reply ?? 0) + 1;
-      continue;
-    }
-    const created = Date.parse(post.createdAt);
-    if (Number.isNaN(created)) {
-      dropped.bad_timestamp = (dropped.bad_timestamp ?? 0) + 1;
-      continue;
-    }
-    if (post.text.trim().length < 1 && !post.mediaType) {
-      dropped.short_text = (dropped.short_text ?? 0) + 1;
-      continue;
-    }
-    if (created >= cutoff) {
-      dropped.too_recent = (dropped.too_recent ?? 0) + 1;
-      continue;
-    }
-    if (!(post.impressions > 0)) {
-      dropped.non_positive_impressions = (dropped.non_positive_impressions ?? 0) + 1;
-      continue;
-    }
-    candidates.push(post);
-  }
-  candidates.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id.localeCompare(b.id));
-  const seen = new Set<string>();
-  const eligible: HistoryPost[] = [];
-  for (const post of candidates) {
-    const key = dedupeKey(post.text);
-    if (key.length > 0 && seen.has(key)) {
-      dropped.duplicate = (dropped.duplicate ?? 0) + 1;
-      continue;
-    }
-    if (key.length > 0) seen.add(key);
-    eligible.push(post);
-  }
-
-  const topicHistory: string[] = [];
-  const rows: ModeledRow[] = [];
-  for (let i = 0; i < eligible.length; i++) {
-    const post = eligible[i]!;
-    const prior = eligible.slice(Math.max(0, i - window), i).map((item) => item.impressions);
-    const flags = mediaFlags(post.mediaType);
-    const features = buildAccountFeatures({
-      text: post.text,
-      createdAt: new Date(post.createdAt),
-      timeZone: timezone,
-      hasImage: flags.hasImage,
-      hasVideo: flags.hasVideo,
-      isQuote: post.kind === 'quote',
-      isThread: post.kind === 'reply' && !!post.selfReply,
-      recentTopics: topicHistory,
-    });
-    rememberTopics(topicHistory, post.text);
-    if (prior.length < minHistory) continue;
-    rows.push({
-      id: post.id,
-      createdAt: post.createdAt,
-      impressions: post.impressions,
-      baseline: median(prior),
-      features,
-    });
-  }
-
-  const testStart = Math.floor(rows.length * trainFraction);
-  const trainRows = rows.slice(0, testStart);
-  const testRows = rows.slice(testStart);
-  const featureNames = varyingFeatureNames(trainRows, [...ACCOUNT_FEATURE_KEYS]);
-  const toExample = (row: ModeledRow): Example => ({
-    id: row.id,
-    features: row.features,
-    y: Math.log(row.impressions),
-    actual: row.impressions,
-    baseline: row.baseline,
-    heuristic: null,
-    checklistScore: 0,
+  const study = runStudy(scoped, {
+    timezone,
+    asOf,
+    minAgeDays,
+    window,
+    minHistory,
+    trainFraction,
+    trainedAt: options.trainedAt,
   });
-
-  let validation: AccountReachValidation;
-  let shippedWeights: number[] = [];
-  let shippedMean: number[] = [];
-  let shippedStd: number[] = [];
-  let shippedIntercept = 0;
-  let residualQ10 = 0;
-  let residualQ90 = 0;
-  let lambda = 0;
-  let usedNames = featureNames;
-
-  if (trainRows.length < MIN_TRAIN || testRows.length < MIN_TEST) {
-    validation = blankValidation(
-      judgeTarget({
-        trainN: trainRows.length,
-        testN: testRows.length,
-        modelSpearman: null,
-        baselineSpearman: null,
-        modelMae: null,
-        baselineMae: null,
-      }).reason,
-      trainRows.length,
-      testRows.length,
-    );
-  } else {
-    const evaluated = evaluateExamples(
-      trainRows.map(toExample),
-      testRows.map(toExample),
-      featureNames,
-      {
-        reconstruct: (_row, yhat) => Math.exp(yhat),
-        gate: 'raw_mae',
-        lambdaLoss: 'raw_mae',
-        reportLogMae: true,
-      },
-      'log_impressions',
-    );
-    validation = validationFromReport(evaluated.report);
-    if (evaluated.report.passed && !evaluated.shipped) {
-      validation = { ...validation, passed: false, reason: `${evaluated.report.reason} The passing fit could not be stored.` };
-    }
-    if (evaluated.shipped && validation.passed) {
-      usedNames = evaluated.shipped.featureNames;
-      shippedWeights = evaluated.shipped.weights;
-      shippedMean = evaluated.shipped.mean;
-      shippedStd = evaluated.shipped.std;
-      shippedIntercept = evaluated.shipped.intercept;
-      residualQ10 = evaluated.shipped.residualQ10;
-      residualQ90 = evaluated.shipped.residualQ90;
-      lambda = evaluated.shipped.lambda;
-    }
-  }
-
-  const tail = eligible.slice(-window);
-  const baselineImpressions = tail.length > 0 ? median(tail.map((post) => post.impressions)) : null;
+  const prepared = prepareDataset(scoped, {
+    timezone,
+    asOf,
+    minAgeDays,
+    window,
+    minHistory,
+    quotedImpressions: false,
+    includeSelfReplies: INCLUDE_SELF[study.chosen] === true,
+  });
+  const fit = study.shipped;
+  const passed = study.holdout.passed;
+  const topWeights = fit.featureNames
+    .map((name, index) => ({ name, weight: fit.weights[index] ?? 0 }))
+    .sort((a, b) => Math.abs(b.weight) - Math.abs(a.weight))
+    .slice(0, 12);
+  const eligible = prepared.eligible;
   const model: AccountReachModel = {
     kind: 'account-log-impressions',
     version: 1,
-    status: validation.passed ? 'calibrated' : 'uncalibrated',
-    reason: validation.reason,
+    status: passed ? 'calibrated' : 'uncalibrated',
+    reason: study.holdout.reason,
     account,
     timezone,
     trainedAt: (options.trainedAt ?? new Date()).toISOString(),
-    target: 'log_impressions',
-    featureNames: validation.passed ? usedNames : [],
-    mean: validation.passed ? shippedMean : [],
-    std: validation.passed ? shippedStd : [],
-    weights: validation.passed ? shippedWeights : [],
-    intercept: validation.passed ? shippedIntercept : 0,
-    residualQ10: validation.passed ? residualQ10 : 0,
-    residualQ90: validation.passed ? residualQ90 : 0,
-    lambda: validation.passed ? lambda : 0,
-    baselineImpressions,
-    latestPostAt: eligible.length > 0 ? eligible[eligible.length - 1]!.createdAt : null,
-    recentPostAts: eligible.slice(-RECENT_POST_CAP).map((post) => post.createdAt),
-    recentTopics: uniqueTail(topicHistory),
-    validation,
+    config: fit.config,
+    predictTarget: fit.target,
+    loss: fit.loss,
+    shrinkK: fit.shrinkK,
+    featureNames: fit.featureNames,
+    mean: fit.mean,
+    std: fit.std,
+    weights: fit.weights,
+    intercept: fit.intercept,
+    boost: fit.boost,
+    residualQ10: fit.residualQ10,
+    residualQ90: fit.residualQ90,
+    lambda: fit.lambda,
+    baselineImpressions: prepared.nextContext.baselineImpressions,
+    baselineEngagement: prepared.nextContext.baselineEngagement,
+    ewmaByKind: prepared.nextContext.ewmaByKind,
+    latestPostAt: prepared.nextContext.latestPostAt,
+    recentPostAts: prepared.nextContext.recentPostAts,
+    recentTopics: prepared.nextContext.recentTopics,
+    topWeights,
+    selection: study.table.map((row) => ({
+      config: row.config,
+      maeGain: row.maeGain,
+      spearman: row.spearman,
+      detail: row.detail,
+    })),
+    validation: {
+      passed: study.holdout.passed,
+      reason: study.holdout.reason,
+      trainN: study.holdout.trainN,
+      testN: study.holdout.testN,
+      spearman: study.holdout.spearman,
+      mae: study.holdout.mae,
+      baselineSpearman: study.holdout.baselineSpearman,
+      baselineMae: study.holdout.baselineMae,
+      maeLog: study.holdout.maeLog,
+      baselineMaeLog: study.holdout.baselineMaeLog,
+      coverage80: study.holdout.coverage80,
+    },
   };
-
   return {
     model,
-    dropped,
+    dropped: prepared.dropped,
     eligiblePosts: eligible.length,
-    modeledPosts: rows.length,
-    featuresUsed: validation.passed ? usedNames : featureNames,
+    modeledPosts: prepared.rows.length,
+    featuresUsed: fit.featureNames,
     span: eligible.length > 0 ? [eligible[0]!.createdAt, eligible[eligible.length - 1]!.createdAt] : null,
   };
 }
@@ -453,36 +268,9 @@ export function parseAccountModel(data: unknown): AccountReachModel | null {
   if (!rec) return null;
   if (rec.kind !== 'account-log-impressions' || rec.version !== 1) return null;
   if (rec.status !== 'calibrated' && rec.status !== 'uncalibrated') return null;
-  if (rec.target !== 'log_impressions') return null;
   if (typeof rec.timezone !== 'string' || typeof rec.reason !== 'string') return null;
   if (!Array.isArray(rec.featureNames) || !Array.isArray(rec.weights)) return null;
   return rec as unknown as AccountReachModel;
-}
-
-function project(model: AccountReachModel, features: Record<string, number>): number {
-  let y = model.intercept;
-  for (let j = 0; j < model.featureNames.length; j++) {
-    const std = model.std[j] ?? 0;
-    if (!(std > 0)) continue;
-    const x = features[model.featureNames[j]!] ?? 0;
-    y += (model.weights[j] ?? 0) * ((x - (model.mean[j] ?? 0)) / std);
-  }
-  return y;
-}
-
-function rangeFromLog(model: AccountReachModel, logImpression: number): ReachRange {
-  const low = Math.exp(logImpression + model.residualQ10);
-  const high = Math.exp(logImpression + model.residualQ90);
-  const a = Math.max(1, Math.round(Math.min(low, high)));
-  const b = Math.max(a, Math.round(Math.max(low, high)));
-  return { low: a, high: b };
-}
-
-function confidenceOf(model: AccountReachModel): number {
-  const coverage = model.validation.coverage80;
-  if (coverage == null) return 0;
-  const sample = Math.min(1, model.validation.testN / 40);
-  return Math.round(coverage * sample * 1000) / 1000;
 }
 
 function draftFlags(meta: DraftScoreMeta): { hasImage: boolean; hasVideo: boolean } {
@@ -509,14 +297,116 @@ function formatWhen(date: Date, timeZone: string): string {
   }).format(date);
 }
 
+function kindEwma(model: AccountReachModel, isQuote: boolean, isThread: boolean): number | null {
+  const table = model.ewmaByKind ?? { original: null, quote: null, reply: null };
+  if (isQuote) return table.quote;
+  if (isThread) return table.reply;
+  return table.original;
+}
+
+function draftFeatures(
+  model: AccountReachModel,
+  text: string,
+  meta: DraftScoreMeta,
+  when: Date,
+  flags: { hasImage: boolean; hasVideo: boolean },
+): Record<string, number> {
+  const nowMs = when.getTime();
+  const recent = (model.recentPostAts ?? [])
+    .map((stamp) => Date.parse(stamp))
+    .filter((stamp) => !Number.isNaN(stamp));
+  const postsLast24h = recent.filter((stamp) => nowMs - stamp <= 24 * 60 * 60 * 1000 && nowMs - stamp >= 0).length;
+  const latest = model.latestPostAt ? Date.parse(model.latestPostAt) : Number.NaN;
+  const hoursSincePrev = Number.isNaN(latest) ? 24 : Math.max(0, (nowMs - latest) / 36e5);
+  const isQuote = meta.isQuote ?? false;
+  const isThread = meta.isThread ?? false;
+  const scored = scorePost({
+    text,
+    hasImage: flags.hasImage,
+    hasVideo: flags.hasVideo,
+    isQuote,
+    postsToday: postsLast24h,
+    recentTopics: model.recentTopics ?? [],
+  });
+  const baseline = model.baselineImpressions ?? 1;
+  const features = buildFeatureRecord({
+    text,
+    signals: scored.signals,
+    createdAt: when,
+    timeZone: model.timezone,
+    hasImage: flags.hasImage,
+    hasVideo: flags.hasVideo,
+    isQuote,
+    lang: guessLang(text),
+    hoursSincePrev,
+    postsLast24h,
+    baselineImpressions: baseline,
+    baselineEngagement: model.baselineEngagement ?? 0,
+    followerCount: null,
+    selfReply: isThread,
+  });
+  const ewma = kindEwma(model, isQuote, isThread);
+  features.log_ewma_gap =
+    ewma != null ? Math.log(Math.max(ewma, 1e-6)) - Math.log(Math.max(baseline, 1)) : 0;
+  features.q_rel_author = 0;
+  return features;
+}
+
+function pointOf(
+  model: AccountReachModel,
+  features: Record<string, number>,
+  isQuote: boolean,
+  isThread: boolean,
+): number {
+  const baseline = model.baselineImpressions ?? 1;
+  return reconstructFit(
+    {
+      target: model.predictTarget ?? 'absolute',
+      loss: model.loss ?? 'squared',
+      shrinkK: model.shrinkK ?? 1,
+      featureNames: model.featureNames,
+      mean: model.mean,
+      std: model.std,
+      weights: model.weights,
+      intercept: model.intercept,
+      boost: model.boost as ShippedFit['boost'],
+    },
+    features,
+    baseline,
+    kindEwma(model, isQuote, isThread),
+  );
+}
+
+function rangeAround(model: AccountReachModel, point: number): ReachRange {
+  const low = point * Math.exp(model.residualQ10);
+  const high = point * Math.exp(model.residualQ90);
+  const a = Math.max(1, Math.round(Math.min(low, high)));
+  const b = Math.max(a, Math.round(Math.max(low, high)));
+  return { low: a, high: b };
+}
+
+function confidenceOf(model: AccountReachModel): number {
+  const coverage = model.validation?.coverage80;
+  if (coverage == null) return 0;
+  const sample = Math.min(1, (model.validation?.testN ?? 0) / 40);
+  return Math.round(coverage * sample * 1000) / 1000;
+}
+
+function factorLabel(name: string): string {
+  if (FACTOR_LABELS[name]) return FACTOR_LABELS[name];
+  if (name.startsWith('sig_')) return name.slice(4).replace(/_/g, ' ');
+  return name.replace(/_/g, ' ');
+}
+
 function topFactors(model: AccountReachModel, features: Record<string, number>): ReachFactor[] {
+  if (model.loss === 'gbt' || model.loss === 'none' || model.weights.length === 0) return [];
   const folded = new Map<string, number>();
   for (let j = 0; j < model.featureNames.length; j++) {
     const name = model.featureNames[j]!;
     const std = model.std[j] ?? 0;
     if (!(std > 0)) continue;
     const contribution = (model.weights[j] ?? 0) * (((features[name] ?? 0) - (model.mean[j] ?? 0)) / std);
-    const label = FACTOR_LABELS[name] ?? name;
+    const label = factorLabel(name);
     folded.set(label, (folded.get(label) ?? 0) + contribution);
   }
   return [...folded.entries()]
@@ -530,94 +420,97 @@ function topFactors(model: AccountReachModel, features: Record<string, number>):
     }));
 }
 
-function pushSuggestion(
-  out: ReachSuggestion[],
-  current: ReachRange,
-  currentCenter: number,
-  altLog: number,
-  model: AccountReachModel,
-  id: string,
-  text: string,
-): void {
-  const center = Math.exp(altLog);
-  if (!(currentCenter > 0) || (center - currentCenter) / currentCenter < MIN_SUGGESTION_LIFT) return;
-  const range = rangeFromLog(model, altLog);
-  if (range.low === current.low && range.high === current.high) return;
-  out.push({ id, text, range });
-}
-
 function suggestionsFor(
   model: AccountReachModel,
-  base: AccountFeatureInput,
-  features: Record<string, number>,
+  text: string,
+  meta: DraftScoreMeta,
+  when: Date,
+  flags: { hasImage: boolean; hasVideo: boolean },
   current: ReachRange,
-  currentLog: number,
+  currentPoint: number,
 ): ReachSuggestion[] {
+  if (!(currentPoint > 0) || model.predictTarget === 'ewma' || model.loss === 'none') return [];
   const out: ReachSuggestion[] = [];
-  const currentCenter = Math.exp(currentLog);
-  const attempt = (id: string, text: string, patch: Record<string, number>) => {
-    const next: Record<string, number> = { ...features };
-    for (const [key, value] of Object.entries(patch)) next[key] = value;
-    pushSuggestion(out, current, currentCenter, project(model, next), model, id, text);
+  const consider = (id: string, label: string, nextMeta: DraftScoreMeta, nextFlags: { hasImage: boolean; hasVideo: boolean }, nextWhen: Date) => {
+    const features = draftFeatures(model, text, nextMeta, nextWhen, nextFlags);
+    const point = pointOf(model, features, nextMeta.isQuote ?? false, nextMeta.isThread ?? false);
+    if ((point - currentPoint) / currentPoint < MIN_SUGGESTION_LIFT) return;
+    const range = rangeAround(model, point);
+    if (range.low === current.low && range.high === current.high) return;
+    out.push({ id, text: label, range });
   };
 
-  if (!base.hasImage && !base.hasVideo) {
-    attempt('add-image', 'An image is associated with a higher range on your past posts.', {
-      has_image: 1,
-      has_video: 0,
-    });
-    attempt('add-video', 'A video is associated with a higher range on your past posts.', {
-      has_image: 0,
-      has_video: 1,
-    });
-  } else if (base.hasImage && !base.hasVideo) {
-    attempt('remove-image', 'Posts without an image are associated with a higher range on your past posts.', {
-      has_image: 0,
-    });
-  } else if (base.hasVideo) {
-    attempt('remove-video', 'Posts without a video are associated with a higher range on your past posts.', {
-      has_video: 0,
-    });
+  if (!flags.hasImage && !flags.hasVideo) {
+    consider('add-image', 'An image is associated with a higher range on your past posts.', meta, { hasImage: true, hasVideo: false }, when);
+    consider('add-video', 'A video is associated with a higher range on your past posts.', meta, { hasImage: false, hasVideo: true }, when);
+  } else if (flags.hasImage && !flags.hasVideo) {
+    consider('remove-image', 'Posts without an image are associated with a higher range on your past posts.', meta, { hasImage: false, hasVideo: false }, when);
+  } else if (flags.hasVideo) {
+    consider('remove-video', 'Posts without a video are associated with a higher range on your past posts.', meta, { hasImage: false, hasVideo: false }, when);
   }
 
-  if ((features.hashtag_count ?? 0) < 1) {
-    attempt('add-hashtag', 'One hashtag is associated with a higher range on your past posts. This does not choose the tag.', {
-      hashtag_count: 1,
-    });
+  const bare = draftFeatures(model, text, meta, when, flags);
+  if ((bare.hashtag_count ?? 0) < 1) {
+    const withTag = `${text} #note`;
+    const tagged = draftFeatures(model, withTag, meta, when, flags);
+    const point = pointOf(model, tagged, meta.isQuote ?? false, meta.isThread ?? false);
+    if (currentPoint > 0 && (point - currentPoint) / currentPoint >= MIN_SUGGESTION_LIFT) {
+      const range = rangeAround(model, point);
+      if (range.low !== current.low || range.high !== current.high) {
+        out.push({
+          id: 'add-hashtag',
+          text: 'One hashtag is associated with a higher range on your past posts. This does not choose the tag.',
+          range,
+        });
+      }
+    }
   } else {
-    attempt('drop-hashtag', 'Fewer hashtags are associated with a higher range on your past posts.', {
-      hashtag_count: 0,
-    });
+    const stripped = text.replace(/#[\p{L}\p{N}_]+/gu, ' ').replace(/[ \t]{2,}/g, ' ').trim();
+    const features = draftFeatures(model, stripped, meta, when, flags);
+    const point = pointOf(model, features, meta.isQuote ?? false, meta.isThread ?? false);
+    if (currentPoint > 0 && (point - currentPoint) / currentPoint >= MIN_SUGGESTION_LIFT) {
+      const range = rangeAround(model, point);
+      if (range.low !== current.low || range.high !== current.high) {
+        out.push({ id: 'drop-hashtag', text: 'Fewer hashtags are associated with a higher range on your past posts.', range });
+      }
+    }
   }
 
-  if ((features.has_link ?? 0) >= 1) {
-    attempt('remove-link', 'No link is associated with a higher range on your past posts.', { has_link: 0 });
+  if ((bare.has_link ?? 0) >= 1) {
+    const stripped = text.replace(/https?:\/\/\S+/gi, ' ').replace(/[ \t]{2,}/g, ' ').trim();
+    const features = draftFeatures(model, stripped, meta, when, flags);
+    const point = pointOf(model, features, meta.isQuote ?? false, meta.isThread ?? false);
+    if (currentPoint > 0 && (point - currentPoint) / currentPoint >= MIN_SUGGESTION_LIFT) {
+      const range = rangeAround(model, point);
+      if (range.low !== current.low || range.high !== current.high) {
+        out.push({ id: 'remove-link', text: 'No link is associated with a higher range on your past posts.', range });
+      }
+    }
   }
 
-  let best: { when: Date; log: number } | null = null;
+  let best: { when: Date; point: number } | null = null;
   for (let step = 1; step <= 24 * 7; step++) {
-    const when = new Date(base.createdAt.getTime() + step * 60 * 60 * 1000);
-    const alt = buildAccountFeatures({ ...base, createdAt: when });
-    const log = project(model, alt);
-    if (!best || log > best.log) best = { when, log };
+    const nextWhen = new Date(when.getTime() + step * 60 * 60 * 1000);
+    const features = draftFeatures(model, text, meta, nextWhen, flags);
+    const point = pointOf(model, features, meta.isQuote ?? false, meta.isThread ?? false);
+    if (!best || point > best.point) best = { when: nextWhen, point };
   }
-  if (best) {
-    pushSuggestion(
-      out,
-      current,
-      currentCenter,
-      best.log,
-      model,
-      'later-hour',
-      `Posting around ${formatWhen(best.when, model.timezone)} is associated with a higher range on your past posts.`,
-    );
+  if (best && currentPoint > 0 && (best.point - currentPoint) / currentPoint >= MIN_SUGGESTION_LIFT) {
+    const range = rangeAround(model, best.point);
+    if (range.low !== current.low || range.high !== current.high) {
+      out.push({
+        id: 'later-hour',
+        text: `Posting around ${formatWhen(best.when, model.timezone)} is associated with a higher range on your past posts.`,
+        range,
+      });
+    }
   }
   return out;
 }
 
 /**
- * Score one draft. Returns a range only when `meta.model` passed the
- * time-split gate. Otherwise the range is null and suggestions are empty.
+ * Score one draft. A range is returned only when the shipped config passed
+ * the time-split gate. Weights may still be present on a withheld model.
  */
 export function score(draftText: string, meta: DraftScoreMeta = {}): DraftScore {
   const model = meta.model;
@@ -627,12 +520,8 @@ export function score(draftText: string, meta: DraftScoreMeta = {}): DraftScore 
   if (model.kind !== 'account-log-impressions' || model.version !== 1) {
     return withheld('This file is not an account reach model.');
   }
-  if (model.status !== 'calibrated' || model.featureNames.length === 0) {
+  if (model.status !== 'calibrated') {
     return withheld(model.reason || 'Uncalibrated. Reach numbers stay hidden until the model beats your rolling median on held-out posts.');
-  }
-  const width = model.featureNames.length;
-  if (model.mean.length !== width || model.std.length !== width || model.weights.length !== width) {
-    return withheld('The model file is incomplete, so no range is shown.');
   }
   const text = draftText ?? '';
   const flags = draftFlags(meta);
@@ -641,41 +530,26 @@ export function score(draftText: string, meta: DraftScoreMeta = {}): DraftScore 
   }
   const now = resolveNow(meta.now);
   if (!now) return withheld('The scoring time is not a valid date.');
+  const ridge = model.loss !== 'gbt' && model.loss !== 'none';
+  if (ridge && (model.mean.length !== model.featureNames.length || model.std.length !== model.featureNames.length || model.weights.length !== model.featureNames.length)) {
+    return withheld('The model file is incomplete, so no range is shown.');
+  }
   let features: Record<string, number>;
   try {
     assertTimeZone(model.timezone);
-    features = buildAccountFeatures({
-      text,
-      createdAt: now,
-      timeZone: model.timezone,
-      hasImage: flags.hasImage,
-      hasVideo: flags.hasVideo,
-      isQuote: meta.isQuote ?? false,
-      isThread: meta.isThread ?? false,
-      recentTopics: model.recentTopics ?? [],
-    });
+    features = draftFeatures(model, text, meta, now, flags);
   } catch {
     return withheld('The model timezone is not usable.');
   }
-  const logImpression = project(model, features);
-  if (!Number.isFinite(logImpression)) return withheld('The model did not produce a finite range.');
-  const range = rangeFromLog(model, logImpression);
-  const base: AccountFeatureInput = {
-    text,
-    createdAt: now,
-    timeZone: model.timezone,
-    hasImage: flags.hasImage,
-    hasVideo: flags.hasVideo,
-    isQuote: meta.isQuote ?? false,
-    isThread: meta.isThread ?? false,
-    recentTopics: model.recentTopics ?? [],
-  };
+  const point = pointOf(model, features, meta.isQuote ?? false, meta.isThread ?? false);
+  if (!Number.isFinite(point) || !(point > 0)) return withheld('The model did not produce a finite range.');
+  const range = rangeAround(model, point);
   return {
     status: 'scored',
     range,
     confidence: confidenceOf(model),
     topFactors: topFactors(model, features),
-    suggestions: suggestionsFor(model, base, features, range, logImpression),
+    suggestions: suggestionsFor(model, text, meta, now, flags, range, point),
     reason: model.reason,
   };
 }

@@ -47,11 +47,17 @@ window.YTD.tweets.part0 = [
   {
     "tweet": {
       "id_str": "1005",
-      "full_text": "Quoting a post I want people to see",
+      "full_text": "Quoting a post I want people to see https://t.co/qtlink https://t.co/extlnk",
       "created_at": "Fri Jan 19 09:00:00 +0000 2024",
       "is_quote_status": true,
       "quoted_status_id_str": "77",
-      "lang": "en"
+      "lang": "en",
+      "entities": {
+        "urls": [
+          { "url": "https://t.co/qtlink", "expanded_url": "https://x.com/someone/status/77", "display_url": "x.com/someone/status/77" },
+          { "url": "https://t.co/extlnk", "expanded_url": "https://example.com/story", "display_url": "example.com/story" }
+        ]
+      }
     }
   },
   {

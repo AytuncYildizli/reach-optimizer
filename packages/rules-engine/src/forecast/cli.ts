@@ -28,8 +28,9 @@ Options:
 function parseArgs(argv: string[]): { files: string[]; flags: Record<string, string> } {
   const positional: string[] = [];
   const flags: Record<string, string> = {};
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i]!;
+  const args = argv[0] === '--' ? argv.slice(1) : argv;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
     if (arg === '--') continue;
     if (arg === '--help' || arg === '-h') {
       usage();
@@ -37,7 +38,7 @@ function parseArgs(argv: string[]): { files: string[]; flags: Record<string, str
     }
     if (arg.startsWith('--')) {
       const key = arg.slice(2);
-      const next = argv[i + 1];
+      const next = args[i + 1];
       if (!next || next.startsWith('--')) {
         flags[key] = 'true';
       } else {

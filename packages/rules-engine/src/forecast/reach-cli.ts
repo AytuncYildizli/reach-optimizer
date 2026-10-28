@@ -22,8 +22,10 @@ score prints a range, or status withheld. It does not rewrite the draft.
 }
 
 function parseArgs(argv: string[]): { command: string; flags: Record<string, string | string[]> } {
-  const command = argv[0] && !argv[0].startsWith('--') ? argv[0] : '';
-  const rest = command ? argv.slice(1) : argv;
+  // pnpm 10 forwards the `--` that separates the script name from its args.
+  const args = argv[0] === '--' ? argv.slice(1) : argv;
+  const command = args[0] && !args[0].startsWith('--') ? args[0] : '';
+  const rest = command ? args.slice(1) : args;
   const flags: Record<string, string | string[]> = {};
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i]!;
@@ -144,17 +146,27 @@ function trainCommand(flags: Record<string, string | string[]>): void {
     baselineMaeLog: validation.baselineMaeLog,
     coverage80: validation.coverage80,
     featuresUsed: result.featuresUsed,
+    config: result.model.config,
+    topWeights: result.model.topWeights,
     reason: result.model.reason,
     wrote: out ?? null,
   };
   if (flags.json === 'true') printJson(summary);
   else {
-    console.log(`status ${result.model.status}  account ${result.model.account}`);
+    console.log(`status ${result.model.status}  account ${result.model.account}  config ${result.model.config}`);
     console.log(`eligible ${result.eligiblePosts}  modeled ${result.modeledPosts}  train ${validation.trainN}  test ${validation.testN}`);
     console.log(`Spearman ${fmt(validation.spearman)} vs baseline ${fmt(validation.baselineSpearman)}`);
     console.log(`MAE ${fmt(validation.mae)} vs baseline ${fmt(validation.baselineMae)}`);
     console.log(`log-MAE ${fmt(validation.maeLog)} vs baseline ${fmt(validation.baselineMaeLog)}`);
     console.log(`80% coverage ${fmt(validation.coverage80)}`);
+    if (result.model.topWeights.length > 0) {
+      console.log(
+        `top weights ${result.model.topWeights
+          .slice(0, 8)
+          .map((item) => `${item.name} ${item.weight.toFixed(3)}`)
+          .join(', ')}`,
+      );
+    }
     console.log(result.model.reason);
     if (out) console.log(`wrote ${out}`);
   }

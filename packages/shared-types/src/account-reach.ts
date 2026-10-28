@@ -56,24 +56,46 @@ export interface AccountReachModel {
   /** IANA zone used for hour and weekday features. Scoring must keep it. */
   timezone: string;
   trainedAt: string;
-  target: 'log_impressions';
+  /**
+   * Study config chosen on the training slice. The holdout only decides
+   * `status`. Weights are stored either way.
+   */
+  config: string;
+  /** How to turn the linear predictor back into impressions. */
+  predictTarget: 'relative' | 'absolute' | 'ewma';
+  loss: 'squared' | 'huber' | 'gbt' | 'none';
+  /** Multiplier on the log-ratio before exp. 1 when the config does not shrink. */
+  shrinkK: number;
   featureNames: string[];
   mean: number[];
   std: number[];
+  /** Standardized ridge weights. Empty for an EWMA or tree config. Present even when the gate fails. */
   weights: number[];
   intercept: number;
-  /** 10th and 90th percentile of inner-validation residuals in log space. */
+  /** Gradient-boosted trees when `loss` is `gbt`. */
+  boost: {
+    mean: number;
+    learningRate: number;
+    trees: unknown[];
+  } | null;
+  /** 10th and 90th percentile of training-slice log-impression residuals. */
   residualQ10: number;
   residualQ90: number;
   lambda: number;
   /**
    * Rolling median of the latest eligible posts. This is the naive baseline
-   * the gate compares against. It is not a model feature.
+   * the gate compares against.
    */
   baselineImpressions: number | null;
+  baselineEngagement: number | null;
+  ewmaByKind: { original: number | null; quote: number | null; reply: number | null };
   latestPostAt: string | null;
   recentPostAts: string[];
   recentTopics: string[];
+  /** Largest |standardized weights| of the shipped fit. */
+  topWeights: Array<{ name: string; weight: number }>;
+  /** Train-slice comparison that chose `config`. The holdout is not in this table. */
+  selection: Array<{ config: string; maeGain: number | null; spearman: number | null; detail: string }>;
   validation: AccountReachValidation;
 }
 

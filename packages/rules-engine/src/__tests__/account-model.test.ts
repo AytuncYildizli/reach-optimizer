@@ -8,7 +8,9 @@ import { MIN_MAE_IMPROVEMENT, MIN_TEST, MIN_TRAIN } from '../forecast/model';
 import { historyToJson, importHistory } from '../forecast/import-archive';
 import { parsePostsJson } from '../forecast/dataset';
 import { buildAccountFeatures, hashtagCount, score, trainAccountModel } from '../forecast/account-model';
-import { driftPosts, signalPosts } from './fixtures/synthetic-reach';
+import { externalLinkCount } from '../forecast/features';
+import { archiveShapedPosts, driftPosts, signalPosts } from './fixtures/synthetic-reach';
+import { runStudy } from '../forecast/study';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixture = (name: string) => join(here, 'fixtures', name);
@@ -49,6 +51,12 @@ describe('archive import', () => {
     expect(byId.get('1001')?.text).not.toContain('https://t.co/pic');
     expect(byId.get('1004')).toMatchObject({ kind: 'reply', selfReply: true, impressions: 450 });
     expect(byId.get('1005')).toMatchObject({ kind: 'quote', impressions: 900, bookmarks: 3 });
+    expect(byId.get('1005')?.text).toContain('https://t.co/extlnk');
+    expect(byId.get('1005')?.text).not.toContain('https://t.co/qtlink');
+    expect(byId.get('1005')?.text).not.toContain('x.com/someone/status/77');
+    expect(externalLinkCount(byId.get('1005')?.text ?? '')).toBe(1);
+    expect(externalLinkCount(byId.get('1001')?.text ?? '')).toBe(1);
+    expect(externalLinkCount('photo only https://x.com/aytunc/status/1001/photo/1')).toBe(0);
 
     const roundTrip = parsePostsJson(historyToJson(result.posts));
     expect(roundTrip.find((post) => post.id === '1004')?.selfReply).toBe(true);
@@ -102,6 +110,8 @@ describe('synthetic reach fixture', () => {
   it('scores a range when content features beat the rolling median, and withholds them when they do not', () => {
     const signal = trainAccountModel(signalPosts(), TRAIN);
     const validation = signal.model.validation;
+    expect(signal.model.config).toBeTruthy();
+    expect(signal.model.selection.map((row) => row.config)).toContain(signal.model.config);
     expect(signal.model.status).toBe('calibrated');
     expect(validation.passed).toBe(true);
     expect(validation.trainN).toBeGreaterThanOrEqual(MIN_TRAIN);
@@ -142,7 +152,8 @@ describe('synthetic reach fixture', () => {
 
     const drift = trainAccountModel(driftPosts(), TRAIN);
     expect(drift.model.status).toBe('uncalibrated');
-    expect(drift.model.featureNames).toEqual([]);
+    expect(drift.model.weights.length + (drift.model.boost?.trees.length ?? 0)).toBeGreaterThan(0);
+    expect(drift.model.config).toBeTruthy();
     const driftScore = score(text, { model: drift.model, hasMedia: true, now });
     expect(driftScore.status).toBe('withheld');
     expect(driftScore.range).toBeNull();
@@ -151,6 +162,28 @@ describe('synthetic reach fixture', () => {
     const missing = score(text, {});
     expect(missing.status).toBe('withheld');
     expect(missing.range).toBeNull();
+  });
+
+  it('selects on a training slice for an archive-shaped series and keeps weights if the gate fails', () => {
+    const posts = archiveShapedPosts();
+    const quote = posts.find((post) => post.kind === 'quote');
+    expect(externalLinkCount(quote?.text ?? '')).toBe(0);
+    expect(externalLinkCount(posts.find((post) => post.text.includes('example.com'))?.text ?? '')).toBe(1);
+    const trained = trainAccountModel(posts, TRAIN);
+    const study = runStudy(
+      posts.map((post) => ({ ...post, account: 'aytunc' })),
+      { timezone: 'UTC', asOf: TRAIN.asOf, minAgeDays: 0, trainFraction: 0.7 },
+    );
+    expect(trained.model.config).toBe(study.chosen);
+    expect(trained.model.validation.passed).toBe(study.holdout.passed);
+    expect(trained.model.weights.length + (trained.model.boost?.trees.length ?? 0)).toBeGreaterThan(0);
+    const scored = score('archive note 999', { model: trained.model, now: TRAIN.asOf });
+    if (trained.model.status === 'calibrated') {
+      expect(scored.range).not.toBeNull();
+    } else {
+      expect(scored.status).toBe('withheld');
+      expect(scored.range).toBeNull();
+    }
   });
 });
 
@@ -165,6 +198,7 @@ describe('reach CLI', () => {
       execFileSync(tsx, [cli, ...args], { cwd: packageRoot, encoding: 'utf8' });
 
     const imported = run([
+      '--',
       'import',
       '--archive',
       fixture('tweets.js'),

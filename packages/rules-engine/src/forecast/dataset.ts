@@ -94,6 +94,9 @@ export interface PreparedDataset {
     latestPostAt: string | null;
     recentPostAts: string[];
     recentTopics: string[];
+    /** EWMA after the last kept post of each kind. A new draft uses this as its prior. */
+    ewmaByKind: { original: number | null; quote: number | null; reply: number | null };
+    quoteFollowerMedian: number | null;
   };
 }
 
@@ -480,6 +483,12 @@ export function prepareDataset(posts: HistoryPost[], opts: PrepareOptions): Prep
       latestPostAt: latestActivity ? latestActivity.createdAt : null,
       recentPostAts: activity.slice(-40).map((p) => p.createdAt),
       recentTopics: [...new Set(topicSource.flatMap((p) => topicTokens(p.text)))].slice(0, 40),
+      ewmaByKind: {
+        original: ewmaByKind.get('original') ?? null,
+        quote: ewmaByKind.get('quote') ?? null,
+        reply: ewmaByKind.get('reply') ?? null,
+      },
+      quoteFollowerMedian: priorQuoteFollowers.length > 0 ? median(priorQuoteFollowers.slice(-20)) : null,
     },
   };
 }

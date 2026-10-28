@@ -324,22 +324,62 @@ function mediaFromTweet(tweet: Record<string, unknown>): HistoryPost['mediaType'
   return null;
 }
 
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+/** twitter/x/pic/twimg links and the quoted post's permalink are not external. */
+function isNonExternalExpanded(expanded: string, quotedId: string): boolean {
+  if (!expanded) return false;
+  if (quotedId && expanded.includes(quotedId)) return true;
+  const host = hostOf(expanded);
+  return (
+    host === 'twitter.com' ||
+    host === 'mobile.twitter.com' ||
+    host === 'x.com' ||
+    host === 'pic.twitter.com' ||
+    host === 'pic.x.com' ||
+    host === 'pbs.twimg.com' ||
+    host === 'video.twimg.com'
+  );
+}
+
 function cleanArchiveText(tweet: Record<string, unknown>, text: string): string {
   const entities = asRecord(tweet.entities);
-  const urls = Array.isArray(entities?.urls) ? entities.urls : [];
+  const extended = asRecord(tweet.extended_entities);
+  const urls = [
+    ...(Array.isArray(entities?.urls) ? entities.urls : []),
+    ...(Array.isArray(entities?.media) ? entities.media : []),
+    ...(Array.isArray(extended?.media) ? extended.media : []),
+  ];
+  const quotedId = String(tweet.quoted_status_id_str ?? tweet.quoted_status_id ?? '');
   let out = text;
+  const remove = (value: string) => {
+    if (value) out = out.split(value).join(' ');
+  };
   for (const item of urls) {
     const url = asRecord(item);
-    const short = typeof url?.url === 'string' ? url.url : '';
-    const expanded = typeof url?.expanded_url === 'string' ? url.expanded_url : '';
-    const display = typeof url?.display_url === 'string' ? url.display_url : '';
+    if (!url) continue;
+    const short = typeof url.url === 'string' ? url.url : '';
+    const expanded = typeof url.expanded_url === 'string' ? url.expanded_url : '';
+    const display = typeof url.display_url === 'string' ? url.display_url : '';
+    const mediaUrl = typeof url.media_url_https === 'string' ? url.media_url_https : typeof url.media_url === 'string' ? url.media_url : '';
     const isMedia =
-      Boolean(url?.media_key) ||
+      Boolean(url.media_key) ||
+      url.type != null ||
       display.startsWith('pic.x.com') ||
       display.startsWith('pic.twitter.com') ||
       expanded.includes('/photo/') ||
       expanded.includes('/video/');
-    if (isMedia && short) out = out.split(short).join(' ');
+    if (isMedia || isNonExternalExpanded(expanded, quotedId)) {
+      remove(short);
+      remove(expanded);
+      remove(mediaUrl);
+    }
   }
   return out.replace(/[ \t]+\n/g, '\n').replace(/[ \t]{2,}/g, ' ').trim();
 }

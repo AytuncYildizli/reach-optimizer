@@ -138,7 +138,7 @@ pnpm --filter @reach/rules-engine backtest -- a.json b.json --study --timezone E
 
 ### Draftroom score
 
-`score(draftText, meta)` is the call Draftroom makes. It trains on the account's own posts, returns an impression range only when that model beats the rolling-median baseline on newer posts, and otherwise returns `status: "withheld"`. Suggestions name a change (image, video, hashtag, link, hour). They do not rewrite the draft, and this path does not post to X.
+`score(draftText, meta)` is the call Draftroom makes. `reach train` picks a config the way `backtest --study` does: largest raw-MAE gain on a training-only slice, then one gate on the newer posts. The range is shown only when that gate passes. Otherwise the result is `status: "withheld"`, and the weights stay in the model file. Suggestions name a change (image, video, hashtag, link, hour). They do not rewrite the draft, and this path does not post to X.
 
 The X archive (`tweets.js`) has text and time but not impressions. Join it with a CSV or JSON metrics file. `STATUS.md` lists the columns and what is still heuristic.
 
