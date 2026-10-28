@@ -1,4 +1,5 @@
 import type { AnalysisResult, TrendingTopic } from './analysis';
+import type { ReachModelSnapshot } from './forecast';
 
 export interface AnalyzeRequest {
   content: string;
@@ -77,7 +78,9 @@ export interface AccountHealth {
   accountAgeDays: number;
   avgEngagementRate: number | null;  // from tracked tweets, null if no data
   fetchedAt: string;                  // ISO timestamp
-  forecastCorrectionFactor?: number | null; // from calibration cron, null if no data
+  forecastCorrectionFactor?: number | null; // retired multiplier; null
+  /** Present when the calibration cron has fit this account. */
+  reachModel?: ReachModelSnapshot | null;
 }
 
 export interface AccountHealthResponse {

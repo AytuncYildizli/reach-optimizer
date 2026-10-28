@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@lib/db';
 import { verifyToken } from '@lib/auth';
-import type { AccountHealth, AccountHealthFactor, AccountHealthResponse, ErrorResponse } from '@reach/shared-types';
+import type { AccountHealth, AccountHealthFactor, AccountHealthResponse, ErrorResponse, ReachModelSnapshot } from '@reach/shared-types';
 
 export const runtime = 'nodejs';
 
@@ -73,13 +73,17 @@ export async function GET(req: NextRequest) {
       where: { id: user.id },
       select: { forecastCalibration: true },
     });
-    const calibration = fullUser?.forecastCalibration as { correctionFactor?: number } | null;
+    const calibration = fullUser?.forecastCalibration as {
+      correctionFactor?: number | null;
+      reachModel?: ReachModelSnapshot | null;
+    } | null;
 
     return NextResponse.json({
       success: true,
       data: {
         ...health,
         forecastCorrectionFactor: calibration?.correctionFactor ?? null,
+        reachModel: calibration?.reachModel ?? null,
       },
     } satisfies AccountHealthResponse);
   } catch (error) {

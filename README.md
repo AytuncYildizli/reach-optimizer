@@ -14,14 +14,12 @@
 
 ---
 
-ReachOS is a Chrome extension that scores your tweets in real time against the 22-signal taxonomy [xAI published on 2026-05-15](https://github.com/xai-org/x-algorithm), predicts your reach, and shows you exactly how to improve it. BYOK (Bring Your Own Keys) — fully self-hostable.
+ReachOS is a Chrome extension that scores your tweets in real time against 25 signals (the 22-signal taxonomy [xAI published on 2026-05-15](https://github.com/xai-org/x-algorithm), plus topic consistency, ad disclosure, and post frequency) and shows you what to change. A numeric reach interval is shown only after your own posts beat your usual reach on held-out history. Until then the forecast says **uncalibrated** and the checklist is the output. BYOK (Bring Your Own Keys) — fully self-hostable.
 
 ```
 You type a tweet.
-ReachOS says: "This will reach ~14,200 people.
-               Add a curiosity gap before the link → 16,800.
-               Add an image → 19,600.
-               Both → 23,200."
+ReachOS scores the checklist as you type.
+Until your history beats your usual reach, the forecast says "uncalibrated".
 ```
 
 > **v4.0 (May 2026):** ReachOS realigned to xAI's published Phoenix-era algorithm. Outbound links are no longer penalized; instead, descriptive link anchors with a curiosity gap drive the new `click` signal. See [CHANGELOG.md](CHANGELOG.md) for the full migration notes.
@@ -29,7 +27,7 @@ ReachOS says: "This will reach ~14,200 people.
 ## Features
 
 ### Score Overlay + Reach Forecast
-Real-time 0-100 score as you type in the X.com composer. Signal bars grouped into 4 buckets — Engagement, Curiosity, Dwell, Risk — summing the 22 underlying signal predictors. Reach Forecast predicts impressions with interactive what-if scenarios.
+Real-time 0-100 score as you type in the X.com composer. Signal bars grouped into 4 buckets — Engagement, Curiosity, Dwell, Risk — summing 25 signal predictors. Reach Forecast shows an interval only when a per-account model beats that account's rolling median on newer posts. Otherwise it stays uncalibrated.
 
 ![Score Overlay with Reach Forecast](docs/screenshots/overlay-score-forecast.png)
 
@@ -55,8 +53,9 @@ For signed-in users, the system gets smarter over time:
 
 ```
 Post tweet → Save prediction → Fetch real metrics (15min)
-    → Compare predicted vs actual (daily)
-    → Auto-calibrate forecast correction factor
+    → Fit a per-account model on older posts, test it on newer posts
+    → Show a reach interval only if that model beats your rolling-median reach
+    → Otherwise the forecast stays uncalibrated and the checklist remains
     → Learn which signals lift YOUR tweets (daily, needs 5+ tracked tweets)
     → Your Reach Score applies those learned weights (±6 points per signal)
 ```
@@ -65,7 +64,7 @@ Post tweet → Save prediction → Fetch real metrics (15min)
 
 ### Scoring Engine (25 Signals)
 
-ReachOS v4.1 mirrors the 22 signals scored by `home-mixer/scorers/ranking_scorer.rs` in `xai-org/x-algorithm`, plus 3 ReachOS-original predictors covering ad-disclosure, daily post-frequency decay, and microniche topical consistency. Each signal has its own predictor file in [`packages/rules-engine/src/signals/`](packages/rules-engine/src/signals/) — and every xAI signal name matches the Rust source exactly.
+ReachOS v4.2 mirrors the 22 signals scored by `home-mixer/scorers/ranking_scorer.rs` in `xai-org/x-algorithm`, plus 3 ReachOS-original predictors covering ad-disclosure, daily post-frequency decay, and microniche topical consistency. Each signal has its own predictor file in [`packages/rules-engine/src/signals/`](packages/rules-engine/src/signals/) — and every xAI signal name matches the Rust source exactly. A reach number is a per-account model judged on newer posts; if it does not beat that account's rolling median, the forecast stays uncalibrated and the checklist is the output.
 
 | Bucket | Signals | What it predicts |
 |--------|---------|------------------|
@@ -97,20 +96,45 @@ Base score 30 + Σ positive signal predictors (max 95) + Σ negative signal pred
 
 > What's **removed** from v3.0: outbound-link penalty, 3+ hashtag penalty, unknown-language penalty, competitor-mention penalty. None have any visible representation in X's May-2026 published code.
 
-### Reach Forecast Model
+### Reach Forecast
 
-```
-predictedReach = baseReach
-                 * contentMultiplier      (score/50 — score 75 = 1.5x)
-                 * timeMultiplier         (peak=1.25x, good=1.12x, off=0.85x)
-                 * trendMultiplier        (trending=1.15x)
-                 * mediaMultiplier        (image=1.35x, video=1.45x)
-                 * clickGapMultiplier     (link + curiosity gap=1.18x — POSITIVE in v4)
-                 * healthMultiplier       (account health 0.6-1.3x)
-                 * calibrationFactor      (auto-corrects from historical data)
+The checklist score is not a reach prediction. A number is a separate model, and it is withheld when that model does not beat the account's recent typical impressions.
+
+The forecast fits a ridge regression per account:
+
+- Features: the 25 signal scores, plus length, line breaks, numbers, links (`has_link` and link count), media, quote vs original, language, hour and weekday in the account's timezone, recency, and the account's past rolling median impressions.
+- Quote features, known at compose time: `q_present`, `log1p(quoted author followers)`, `log1p(quoted post age in hours)`, and `q_self` (a self-quote). Parsed from `quoted` plus `quoted_author_followers` and `quoted_post_age_at_quote_h`.
+- `q_rel_imp` = `log(quoted impressions + 1) − log(baseline)` is **off** unless you pass `--quoted-impressions`. That count is measured at fetch time, after the quote exists, so the quote has already added views. It is partly leaky. A live model may use it only from a count read at compose time.
+- `follower_count` / `followerCount` / `followers`, or `follower_snapshots: [{ at, followers }]`, is the follower count dated to that post. A count that does not vary inside the account is dropped. A single current follower total copied onto every post is not a feature.
+- Impression target: `log(impressions / rolling median of earlier posts)`.
+- Engagement target: engagement rate minus its own rolling median. Rate is `(likes + reposts + replies + quotes) / impressions`.
+- Split: train on older posts, test on newer posts. Rolling baselines use only earlier posts.
+- A number is shown only when the holdout has at least 40 training posts and 20 test posts, Spearman is positive and above the rolling median, and **raw MAE** is at least 5% lower. The UI then shows an 80% interval, not a single exact count.
+- log-MAE and median absolute error are printed beside that result. They do **not** decide the impression gate. The 5% raw-MAE bar was fixed before these files were scored and is unchanged.
+- Otherwise the forecast is **uncalibrated**. What-if multipliers (image ×1.35, and the rest of the old chain) are not shown.
+
+Pooled mode fits one ridge on several accounts. Each account still gets its own rolling baseline and its own 70/30 time split. The sorted-first account is the intercept; the others get a one-hot column. Pass more than one JSON file, or put an `account` field on each post. One account makes the dummy a constant, so the pooled fit matches the per-account fit. A pooled fit is not what the extension ships. The live number still requires that account's own raw-MAE gate.
+
+```bash
+pnpm --filter @reach/rules-engine backtest -- posts.json --timezone Europe/Istanbul --as-of 2026-10-27T00:00:00.000Z
+pnpm --filter @reach/rules-engine backtest -- a.json b.json --pooled --timezone Europe/Istanbul --quoted-impressions
 ```
 
-`baseReach` = average views from your tracked tweets, or `followers * 5%` if no data yet.
+Early-engagement mode reads rows shaped like a `metric_snapshots` export: `{ id | post_id, age_h: 1|6|24|48|168 | target: "1h"|"6h"|"24h"|"48h"|"7d", metrics }`. It predicts 7-day impressions from the 1h and 6h snapshots (24h and 48h are accepted and not used, because they are later than a 6-hour decision). Features are `log(impressions / rolling median of earlier posts at that age)` at 1h and 6h, `log(imp_6h / imp_1h)`, and the engagement rate at those two ages. The baseline is `impressions_1h × median(impressions_7d / impressions_1h)` on that account's training posts.
+
+The pre-registered gate for this mode is **log-MAE**, at least 5% lower than that 1h multiplier, with the same size and Spearman rules. It becomes the decision only when this mode is scored on a fresh forward holdout of snapshot data. It is not applied to impression files that have already been seen, and it does not replace the raw-MAE gate above. Snapshot fits are not written into the compose-time forecast.
+
+```bash
+pnpm --filter @reach/rules-engine backtest -- --snapshots snapshots.json
+```
+
+`--study` scores a fixed menu on the newest 25% of each account's training span, locks one winner, then scores the newest 30% once. The menu is the current relative-lift ridge, an absolute log target, shrink `baseline × exp(k · lift)` with k chosen inside the fit span, Huber, depth-2 gradient boosting, extra text/schedule/quote-relative/EWMA features, self-replies, and a type EWMA competitor. The 5% raw-MAE gate is the same one. On the six-account files every row lost to the rolling median on that inner slice, Huber lost least, and its sealed holdout also failed (−0.4% MAE). The default model is unchanged. The type EWMA was worse than the rolling median, so it is not a stronger baseline on these files. The open lever is a 1h/6h impression snapshot: caption, clock, and quote features do not move raw error by 5% once the account's recent median is known.
+
+```bash
+pnpm --filter @reach/rules-engine backtest -- a.json b.json --study --timezone Europe/Istanbul
+```
+
+`posts.json` is an array of posts with `public_metrics` (the X API post shape). Replies, posts younger than 3 days, captions with no scorable text, and duplicate captions are dropped from the fit. Posts from the last 3 days stay in the live recency and topic context; their impressions are still moving, so they stay out of the rolling baseline. The daily calibrate cron fits the per-account model for tracked tweets and stores it on the user. The extension reads that snapshot, refreshing account health when the cache is missing, and shows the checklist when no model has passed.
 
 ## Quick Start
 
@@ -129,7 +153,7 @@ cp .env.example apps/api/.env.local
 # Edit apps/api/.env.local with your keys
 ```
 
-**No server required for basic usage.** The extension scores tweets locally with 36 rules. No keys, no database, no setup. Just install and go.
+**No server required for the checklist.** The extension scores tweets locally with 25 signals (81 sub-rules). No keys, no database, no setup. A reach number needs the account's own metrics and a model that beats its baseline.
 
 If you want to self-host the API for AI features:
 
@@ -219,7 +243,7 @@ The API includes 4 cron jobs (auto-configured on Vercel):
 │         │                 │                                  │
 │         ▼                 ▼                                  │
 │  ┌──────────────────────────────┐                           │
-│  │     Rules Engine (client)    │  36 rules, instant        │
+│  │     Rules Engine (client)    │  25 signals, instant      │
 │  │     @reach/rules-engine      │  scoring on every         │
 │  └──────────────┬───────────────┘  as you type              │
 │                 │                                            │
@@ -270,10 +294,11 @@ reach-optimizer/
 │       ├── src/popup/          # Extension popup (auth, settings)
 │       └── src/background/     # Service worker (API proxy)
 ├── packages/
-│   ├── rules-engine/           # 35 scoring rules + ScoreEngine
-│   │   ├── src/rules/          # 9 rule files
-│   │   ├── src/config/         # weights.json (v3.0)
-│   │   └── src/__tests__/      # 119 tests
+│   ├── rules-engine/           # 25 signals, 81 sub-rules, forecast model
+│   │   ├── src/signals/        # one predictor per signal
+│   │   ├── src/forecast/       # ridge model + backtest CLI
+│   │   ├── src/config/         # weights.json
+│   │   └── src/__tests__/      # 75 tests
 │   ├── ai-checks/              # AI analysis (Claude integration)
 │   │   ├── src/analyzer.ts     # Slop + hook + suggestions
 │   │   ├── src/slop-detector.ts # 28 heuristic patterns
@@ -320,11 +345,17 @@ reach-optimizer/
 ## Running Tests
 
 ```bash
-# All tests (132 passing)
+# Package tests (104 passing: 91 rules-engine + 13 ai-checks)
 pnpm test
 
-# Just rules engine (119 tests)
+# Rules engine only (91 tests)
 pnpm --filter @reach/rules-engine test
+
+# Time-ordered backtest against one or more posts files
+pnpm --filter @reach/rules-engine backtest -- posts.json --timezone Europe/Istanbul
+pnpm --filter @reach/rules-engine backtest -- a.json b.json --pooled --quoted-impressions
+pnpm --filter @reach/rules-engine backtest -- a.json b.json --study
+pnpm --filter @reach/rules-engine backtest -- --snapshots snapshots.json
 
 # Type checking
 pnpm typecheck

@@ -744,104 +744,76 @@ function TrendingBadge({ alignment }: { alignment?: TrendingAlignment | null }) 
 // ---------------------------------------------------------------------------
 // ReachForecastPanel — predictive reach with what-if scenarios
 // ---------------------------------------------------------------------------
-function ReachForecastPanel({ analysis, hasMedia, hasExternalLink }: {
-  analysis: AnalysisResult;
+function ReachForecastPanel({ text, hasMedia, mediaType, isQuoteTweet }: {
+  text: string;
   hasMedia: boolean;
-  hasExternalLink: boolean;
+  mediaType?: 'image' | 'video' | 'gif' | 'poll';
+  isQuoteTweet?: boolean;
 }) {
   const [forecast, setForecast] = useState<ReachForecastType | null>(null);
   const [expanded, setExpanded] = useState(true);
   const [accountHealth, setAccountHealth] = useState<AccountHealth | null>(null);
-  const [timingStatus, setTimingStatus] = useState<'good_now' | 'better_later' | 'off_peak' | null>(null);
-  const [avgViews, setAvgViews] = useState<number | null>(null);
-  const [trackedCount, setTrackedCount] = useState(0);
 
-  // Load account health and timing data from chrome.storage / API
   useEffect(() => {
+    let cancelled = false;
+    const fresh = (value: unknown): AccountHealth | null => {
+      if (!value || typeof value !== 'object') return null;
+      const data = value as AccountHealth;
+      const fetched = new Date(data.fetchedAt).getTime();
+      if (Number.isNaN(fetched)) return null;
+      const age = Date.now() - fetched;
+      return age >= 0 && age < 3600000 ? data : null;
+    };
+    const onChanged = (changes: { [key: string]: chrome.storage.StorageChange }, area: string) => {
+      if (cancelled || area !== 'local' || !changes.accountHealth) return;
+      setAccountHealth(fresh(changes.accountHealth.newValue));
+    };
     try {
-      chrome.storage.local.get(['accountHealth', 'forecastMeta'], (result) => {
-        if (result.accountHealth) {
-          const data = result.accountHealth as AccountHealth;
-          const age = Date.now() - new Date(data.fetchedAt).getTime();
-          if (age < 3600000) { // < 1 hour
-            setAccountHealth(data);
-          }
+      chrome.storage.onChanged.addListener(onChanged);
+      chrome.storage.local.get(['accountHealth'], (result) => {
+        const cached = fresh(result.accountHealth);
+        if (cached) {
+          if (!cancelled) setAccountHealth(cached);
+          return;
         }
-        if (result.forecastMeta) {
-          const meta = result.forecastMeta as { avgViews: number; trackedCount: number };
-          setAvgViews(meta.avgViews);
-          setTrackedCount(meta.trackedCount);
-        }
+        chrome.runtime.sendMessage(
+          { type: 'API_REQUEST', endpoint: '/api/account-health', method: 'GET' },
+          (response) => {
+            if (cancelled || !response?.ok || !response.data?.success || !response.data.data) return;
+            chrome.storage.local.set({ accountHealth: response.data.data });
+            setAccountHealth(fresh(response.data.data));
+          },
+        );
       });
     } catch { /* extension context */ }
-
-    // Get timing status
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    try {
-      chrome.runtime.sendMessage(
-        { type: 'API_REQUEST', endpoint: `/api/timing?timezone=${encodeURIComponent(tz)}`, method: 'GET' },
-        (response) => {
-          if (chrome.runtime.lastError) return;
-          if (response?.ok && response.data?.success) {
-            setTimingStatus(response.data.data.currentStatus);
-          }
-        },
-      );
-    } catch { /* extension context */ }
-
-    // Fetch average views from tracked tweets
-    try {
-      chrome.runtime.sendMessage(
-        { type: 'API_REQUEST', endpoint: '/api/tweets/metrics', method: 'GET' },
-        (response) => {
-          if (chrome.runtime.lastError) return;
-          if (response?.ok && response.data?.success && response.data.data) {
-            const tweets = response.data.data as Array<{ metrics?: { views?: number } }>;
-            const withViews = tweets.filter((tw: { metrics?: { views?: number } }) => tw.metrics && tw.metrics.views && tw.metrics.views > 0);
-            if (withViews.length > 0) {
-              const avg = Math.round(
-                withViews.reduce((sum: number, tw: { metrics?: { views?: number } }) => sum + (tw.metrics?.views ?? 0), 0) / withViews.length,
-              );
-              setAvgViews(avg);
-              setTrackedCount(withViews.length);
-              // Cache for next time
-              try {
-                chrome.storage.local.set({ forecastMeta: { avgViews: avg, trackedCount: withViews.length } });
-              } catch { /* non-critical */ }
-            }
-          }
-        },
-      );
-    } catch { /* extension context */ }
+    return () => {
+      cancelled = true;
+      try { chrome.storage.onChanged.removeListener(onChanged); } catch { /* extension context */ }
+    };
   }, []);
 
-  // Recompute forecast whenever inputs change
   useEffect(() => {
     const result = computeForecast({
-      analysis,
+      text,
       accountHealth,
-      timingStatus,
       hasMedia,
-      hasExternalLink,
-      avgViews,
-      trackedTweetCount: trackedCount,
+      mediaType,
+      isQuoteTweet,
     });
     setForecast(result);
-    // Broadcast predicted reach so post-tracker can capture it
     window.dispatchEvent(new CustomEvent('reachos-forecast-update', {
       detail: { predictedReach: result.predictedReach },
     }));
-  }, [analysis, accountHealth, timingStatus, hasMedia, hasExternalLink, avgViews, trackedCount]);
+  }, [text, accountHealth, hasMedia, mediaType, isQuoteTweet]);
 
   if (!forecast) return null;
 
-  const vsClass = forecast.vsAverage >= 1.2
+  const vsClass = (forecast.vsAverage ?? 1) >= 1.2
     ? 'positive'
-    : forecast.vsAverage <= 0.8
+    : (forecast.vsAverage ?? 1) <= 0.8
       ? 'negative'
       : 'neutral';
-
-  const probClass = (v: number) => v >= 50 ? 'high' : v >= 25 ? 'medium' : 'low';
+  const pct = (value: number) => `${(value * 100).toFixed(1)}%`;
 
   return (
     <div className="reachos-forecast">
@@ -858,46 +830,40 @@ function ReachForecastPanel({ analysis, hasMedia, hasExternalLink }: {
         </button>
       </div>
 
-      {expanded && (
+      {expanded && forecast.status === 'uncalibrated' && (
+        <div className="reachos-forecast-reach">
+          <div className="reachos-forecast-number" style={{ fontSize: '16px' }}>
+            {t('uncalibrated')}
+          </div>
+          <div className="reachos-forecast-range">{t('uncalibratedDetail')}</div>
+          {forecast.reason && (
+            <div className="reachos-forecast-footer">{forecast.reason}</div>
+          )}
+        </div>
+      )}
+
+      {expanded && forecast.status === 'calibrated' && forecast.predictedReach != null && forecast.reachLow != null && forecast.reachHigh != null && (
         <>
-          {/* Main reach prediction */}
           <div className="reachos-forecast-reach">
             <div className="reachos-forecast-number">
               {formatNumber(forecast.predictedReach)}
             </div>
             <div className="reachos-forecast-range">
-              {formatNumber(forecast.reachLow)} - {formatNumber(forecast.reachHigh)} {t('estimatedReach').toLowerCase()}
+              {formatNumber(forecast.reachLow)}–{formatNumber(forecast.reachHigh)} {t('estimatedReach').toLowerCase()}
             </div>
-            {forecast.vsAverage !== 1.0 && (
+            {forecast.vsAverage != null && forecast.vsAverage !== 1.0 && (
               <div className={`reachos-forecast-vs ${vsClass}`}>
                 {forecast.vsAverage >= 1.0 ? '\u25B2' : '\u25BC'} {forecast.vsAverage}x {t('vsYourAvg')}
               </div>
             )}
           </div>
 
-          {/* Probability indicators */}
-          <div className="reachos-forecast-probs">
-            <div className="reachos-forecast-prob">
-              <div className={`reachos-forecast-prob-value ${probClass(forecast.replyProbability)}`}>
-                {forecast.replyProbability}%
-              </div>
-              <div className="reachos-forecast-prob-label">{t('replyProb')}</div>
+          {forecast.engagementRate != null && forecast.engagementLow != null && forecast.engagementHigh != null && (
+            <div className="reachos-forecast-range">
+              {t('engagementRate')} {pct(forecast.engagementRate)} ({pct(forecast.engagementLow)}–{pct(forecast.engagementHigh)})
             </div>
-            <div className="reachos-forecast-prob">
-              <div className={`reachos-forecast-prob-value ${probClass(forecast.bookmarkProbability)}`}>
-                {forecast.bookmarkProbability}%
-              </div>
-              <div className="reachos-forecast-prob-label">{t('bookmarkProb')}</div>
-            </div>
-            <div className="reachos-forecast-prob">
-              <div className={`reachos-forecast-prob-value ${probClass(forecast.viralChance)}`}>
-                {forecast.viralChance}%
-              </div>
-              <div className="reachos-forecast-prob-label">{t('viralChance')}</div>
-            </div>
-          </div>
+          )}
 
-          {/* What-If Scenarios */}
           {forecast.scenarios.length > 0 && (
             <>
               <div className="reachos-section-label" style={{ padding: 0, marginBottom: '6px' }}>
@@ -911,16 +877,12 @@ function ReachForecastPanel({ analysis, hasMedia, hasExternalLink }: {
             </>
           )}
 
-          {/* Footer: data source + confidence */}
           <div className="reachos-forecast-footer">
             <span>
-              {forecast.isEstimate
-                ? t('estimateNote')
-                : `${t('basedOn')} ${forecast.dataPoints} ${t('trackedTweets')}`
-              }
+              {`${t('basedOn')} ${forecast.dataPoints} ${t('trackedTweets')}`}
             </span>
             <div className="reachos-forecast-confidence">
-              <span>{Math.round(forecast.confidence * 100)}%</span>
+              <span>{Math.round(forecast.confidence * 100)}% {t('holdoutCoverage')}</span>
               <div className="reachos-confidence-bar">
                 <div
                   className="reachos-confidence-fill"
@@ -982,7 +944,7 @@ interface ScoreOverlayProps {
   hasExternalLink?: boolean;
 }
 
-export function ScoreOverlay({ analysis, isServerPending, serverError, currentText, hasMedia = false, mediaType, isQuoteTweet, quotedMediaType, hasExternalLink = false }: ScoreOverlayProps) {
+export function ScoreOverlay({ analysis, isServerPending, serverError, currentText, hasMedia = false, mediaType, isQuoteTweet, quotedMediaType }: ScoreOverlayProps) {
   const [minimized, setMinimized] = useState(false);
   const [hidden, setHidden] = useState(false);
 
@@ -1046,9 +1008,10 @@ export function ScoreOverlay({ analysis, isServerPending, serverError, currentTe
             <TimingIndicator />
             <BreakdownBars signalScores={analysis.signalScores} applicable={analysis.applicableSignals} />
             <ReachForecastPanel
-              analysis={analysis}
+              text={currentText ?? ''}
               hasMedia={hasMedia}
-              hasExternalLink={hasExternalLink}
+              mediaType={mediaType}
+              isQuoteTweet={isQuoteTweet}
             />
             <SuggestionList suggestions={analysis.suggestions} />
             <ReplyCoachBanner />

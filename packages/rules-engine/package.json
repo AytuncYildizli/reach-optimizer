@@ -7,12 +7,14 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "backtest": "tsx src/forecast/cli.ts"
   },
   "dependencies": {
     "@reach/shared-types": "workspace:*"
   },
   "devDependencies": {
+    "tsx": "^4.23.15",
     "vitest": "^3.0.0"
   }
 }

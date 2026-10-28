@@ -7,7 +7,23 @@ import {
 export const REPORT_PENALTY = -15;
 
 const POLICY_VIOLATION = /\b(buy followers|free crypto|airdrop here|click my bio|dm for|onlyfans link|scam|nigerian prince|massive giveaway|f4f|follow for follow)\b/i;
-const AUTOMATED_SPAM = /(?:[A-Z]{6,}\s*){2,}|\b\w+@\w+\.\w+\b.*\b\w+@\w+\.\w+\b|(retweet|RT)\s*\+\s*(follow|like)|!{5,}/i;
+
+// Shouted runs are case-sensitive. An `/i` flag on `[A-Z]` matches any two
+// ordinary words of 6+ letters ("building something"), which penalised most
+// normal posts. The other alternatives stay case-insensitive.
+const SHOUTED_WORDS = /(?:\b[A-Z]{6,}\b\s+){1,}\b[A-Z]{6,}\b/;
+const MULTI_EMAIL = /\b\w+@\w+\.\w+\b.*\b\w+@\w+\.\w+\b/i;
+const RT_FOLLOW = /\b(?:retweet|rt)\s*\+\s*(?:follow|like)\b/i;
+const BANG_RUN = /!{5,}/;
+
+export function hasAutomatedSpamMarkers(text: string): boolean {
+  return (
+    SHOUTED_WORDS.test(text) ||
+    MULTI_EMAIL.test(text) ||
+    RT_FOLLOW.test(text) ||
+    BANG_RUN.test(text)
+  );
+}
 
 export function predictReport(ctx: PostContext): SignalScore {
   return buildSignalScore(ctx, {
@@ -29,7 +45,7 @@ export function predictReport(ctx: PostContext): SignalScore {
       {
         name: 'automated_spam_markers',
         weight: -5,
-        test: (c) => AUTOMATED_SPAM.test(c.text),
+        test: (c) => hasAutomatedSpamMarkers(c.text),
       },
     ],
     suggestionWhenLow:
